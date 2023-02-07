@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.1
+// @version      0.2
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -16,7 +16,8 @@ var IHD_json_object = {};
 var IHD_loop;
 var IHD_counter = 0;
 var IHD_ready_to_load = true;
-var prevCursor;
+var IHD_prev_cursor;
+var IHD_retry_counter = 0;
 const IHD_item_attribute_blacklist = [
     "icon_url",
     "icon_url_large",
@@ -65,36 +66,41 @@ function IHD_addDownloadButton (jNode) {
     IHD_stop_button.addEventListener("click", () => {
         IHD_stop_button.disabled = true;
         IHD_enableButton();
-        //TODO save progress
-        if(g_historyCursor) {
-            var IHD_progress = g_historyCursor.time + " " + g_historyCursor.time_frac + " " + g_historyCursor.s;
-            console.log("Download stopped at cursor: " + IHD_progress);
-            IHD_cursor_input.value = IHD_progress;
-        } else {
-            IHD_progress = prevCursor.time + " " + prevCursor.time_frac + " " + prevCursor.s;
-            console.log("Download stopped at cursor: " + IHD_progress);
-            IHD_cursor_input.value = IHD_progress;
-        }
     });
     IHD_download_button.addEventListener("click", () => {
         IHD_download_button.disabled = true;
         IHD_stop_button.disabled = false;
         IHD_checkForCursorInput();
-        //IHD_gatherVisibleItems();
 
         IHD_loop = setInterval(()=>{
             if(IHD_ready_to_load) {
                 IHD_ready_to_load = false;
                 IHD_gatherVisibleItems();
-                IHD_loadMoreItems();
+                if(!Array.isArray(g_historyCursor)) { //If you are on the last page and try to download it will loop back to the start because history cursor is an empty array.
+                    IHD_loadMoreItems();
+                } else {
+                    IHD_enableButton();
+                }
             }
         }, 5000);
     });
 }
 
 //This function reenables the download button and stops our progress, either because the user stopped it or we had an error
+//Output where we stopped at, restore the download button, disable the stop button, and prompt for download.
 function IHD_enableButton() {
     clearInterval(IHD_loop);
+    if(g_historyCursor && !Array.isArray(g_historyCursor)) {
+        var IHD_progress = g_historyCursor.time + " " + g_historyCursor.time_frac + " " + g_historyCursor.s;
+        console.log("Download stopped at cursor: " + IHD_progress);
+        IHD_cursor_input.value = IHD_progress;
+    } else if(IHD_prev_cursor) {
+        IHD_progress = IHD_prev_cursor.time + " " + IHD_prev_cursor.time_frac + " " + IHD_prev_cursor.s;
+        console.log("Download stopped at cursor: " + IHD_progress);
+        IHD_cursor_input.value = IHD_progress;
+    } else {
+        console.log("Download was *probably* started on the last page of history and does not have a cursor to save");
+    }
     IHD_download_button.disabled = false;
     IHD_ready_to_load = true;
     IHD_download(JSON.stringify(IHD_json_object), 'inventory_history.json', 'application/json');
@@ -118,7 +124,6 @@ function IHD_clearTradeRow() {
 
 function IHD_gatherVisibleItems() {
     $(".tradehistoryrow").each(IHD_tradeHistoryRowToJson);
-    console.log(IHD_json_object); //TODO REMOVE
 }
 
 //g_historyCursor & g_sessionID is defined on the page this is meant to run on
@@ -130,8 +135,8 @@ function IHD_loadMoreItems() {
         sessionid: g_sessionID
     };
 
-	prevCursor = g_historyCursor;
-	g_historyCursor = null;
+    IHD_prev_cursor = g_historyCursor;
+    g_historyCursor = null;
 
     $J.ajax({
         type: "GET",
@@ -141,6 +146,7 @@ function IHD_loadMoreItems() {
         if ( data.success )
         {
             console.log("IHD - Data was retrieved successfully.");
+            IHD_retry_counter = 0;
             //console.log(data);
             if( data.html && data.descriptions) {
                 $J('#inventory_history_table').append( data.html );
@@ -152,39 +158,46 @@ function IHD_loadMoreItems() {
             }
 
             if ( data.cursor )
-			{
-				g_historyCursor = data.cursor;
+            {
+                g_historyCursor = data.cursor;
                 IHD_ready_to_load = true;
-			}
-			else
-			{
-				console.warn("IHD - Data did not return a cursor.");
+            }
+            else
+            {
+                console.warn("IHD - Data did not return a cursor. Probably at end of history.");
+                IHD_gatherVisibleItems();
                 IHD_enableButton();
-			}
+            }
         } else {
             console.warn("IHD - Data finished but did not succeed, dumping data object and restoring g_historyCursor.");
             console.warn(data);
-            g_historyCursor = prevCursor;
-            IHD_enableButton();
+            g_historyCursor = IHD_prev_cursor;
+            if(IHD_retry_counter > 10) {
+                IHD_enableButton();
+                IHD_retry_counter = 0;
+            } else {
+                IHD_retry_counter++;
+                IHD_ready_to_load = true;
+            }
         }
     }).fail( function( data ) {
-		g_historyCursor = prevCursor;
+        g_historyCursor = IHD_prev_cursor;
 
-		if ( data.status == 429 )
-		{
-			console.warn("IHD - Error 429 - Too many requests");
+        if ( data.status == 429 )
+        {
+            console.warn("IHD - Error 429 - Too many requests");
             IHD_enableButton();
-		}
-		else
-		{
-			console.warn("IHD - Data failed, unknown error status: " + data.status);
+        }
+        else
+        {
+            console.warn("IHD - Data failed, unknown error status: " + data.status);
             console.warn("IHD - Dumping data object.");
             console.warn(data);
             IHD_enableButton();
-		}
-	}).always( function() {
-		//$J('#inventory_history_loading').hide();
-	});
+        }
+    }).always( function() {
+        //$J('#inventory_history_loading').hide();
+    });
 }
 /*
 This function grabs all the essential data from a row and makes a json object from it.

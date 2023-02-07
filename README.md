@@ -9,5 +9,12 @@
  4) Do something with your json (stat analysis feature coming eventually).
  
 # Versions
+ ## 0.2
+ * Retries 10 times before giving up if nothing is returned
+ * Gathers items from the last result
+ * If the script started on the last page it would loop back to the start, no longer does this and will stop
+ * Anytime the script stops it will now save cursor progress to console and the cursor input box
+ * Removed a log statement that wasn't needed and made some lag after a bit
+
  ## 0.1
  Works...?
