@@ -9,6 +9,10 @@
  4) Do something with your json (stat analysis feature coming eventually).
  
 # Versions
+
+ ### 0.2.1
+ * Events are turned into ids if they are on the list
+ * * This obstructs trade information for privacy concerns, next version will have selector to exclude/include specific events only.
  ## 0.2
  * Retries 10 times before giving up if nothing is returned
  * Gathers items from the last result
