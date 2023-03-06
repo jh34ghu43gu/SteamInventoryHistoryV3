@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.4
+// @version      0.4.1
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -148,7 +148,8 @@ const IHD_inventory_modifications_list = [
     "Unusual effects adjusted",
     "Applied a Strange Filter",
     "Card Upgrade Removed",
-    "Card Upgraded" //60
+    "Card Upgraded", //60
+    "Name changed"
 ]
 
 //Crate objects that get "used" instead of unlocked

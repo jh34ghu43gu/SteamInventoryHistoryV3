@@ -20,6 +20,9 @@
  * Only TF2 events will be queried now (issue #1 finally fixed :) ).
    * If you have other games on your first page they will still be recorded, using the link from step 3 of how to use automatically filters to tf2 events so this shouldn't be a problem.
 
+ ### 0.4.1
+ * Missing event name for "Name changed".
+
  ## 0.3
  * Filters!
    * Cannot be changed after the download is started until the page is refreshed.
