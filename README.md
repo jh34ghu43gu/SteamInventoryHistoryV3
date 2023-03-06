@@ -14,9 +14,12 @@
  ## 0.4
  * Implimented a dictionary for item names to save memory/space on very large amounts of events.
  * Fixed a bug that made all "traded with" events use the same ID (Why do json objects auto sort?).
+ * Fixed a bug that made all trade hold messages record as empty events.
  * Removed the "success" log message that potentially would cause lag on long runs.
  * Made the trade events offset an actual variable.
- 
+ * Only TF2 events will be queried now (issue #1 finally fixed :) ).
+   * If you have other games on your first page they will still be recorded, using the link from step 3 of how to use automatically filters to tf2 events so this shouldn't be a problem.
+
  ## 0.3
  * Filters!
    * Cannot be changed after the download is started until the page is refreshed.
