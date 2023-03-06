@@ -31,15 +31,15 @@
  * Retries 100 times before giving up now; made this a variable easily findable near the top of the script.
  * Next version will have some compression features as the page begins to lag (for me) after it gets into extreme amounts of events (>50k?).
 
- ### 0.2.1
- * Events are turned into ids if they are on the list
-   * This obstructs trade information for privacy concerns, next version will have selector to exclude/include specific events only.
  ## 0.2
  * Retries 10 times before giving up if nothing is returned
  * Gathers items from the last result
  * If the script started on the last page it would loop back to the start, no longer does this and will stop
  * Anytime the script stops it will now save cursor progress to console and the cursor input box
  * Removed a log statement that wasn't needed and made some lag after a bit
+ ### 0.2.1
+ * Events are turned into ids if they are on the list
+   * This obstructs trade information for privacy concerns, next version will have selector to exclude/include specific events only.
 
  ## 0.1
  Works...?
