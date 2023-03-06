@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.3
+// @version      0.4
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -15,13 +15,15 @@
 //NOTE: Need a breadbox opening from someone else to make sure gifted unboxes from that are recorded right, when the data display part is done
 console.log("Tf2 Inventory History Downloader Script is active.");
 var IHD_json_object = {};
+var IHD_dictionary = {};
 var IHD_loop;
-var IHD_counter = 0;
+var IHD_obj_counter = 0;
+var IHD_dict_counter = 0;
 var IHD_skipped_asset_counter = 0;
 var IHD_ready_to_load = true;
 var IHD_prev_cursor;
 var IHD_retry_counter = 0;
-var IHD_max_retries = 100; //Retry on errors this many times.
+var IHD_max_retries = 100; //Retry on errors (not 429) this many times.
 
 //Valve decided to make some item uses a multiple-event thing so these vars will help us track that between event calls
 var IHD_used_temp_obj = {};
@@ -44,6 +46,7 @@ const IHD_item_attribute_blacklist = [
     "descriptions", //Might want to use something from this
     "tags", //We do want some things from here but we'll specifically ask for what we want
     "app_data", //Same with this^
+    "market_hash_name", //We will convert these to dictionary values
     "fraudwarnings"
 ];
 //!!!IMPORTANT
@@ -51,13 +54,27 @@ const IHD_item_attribute_blacklist = [
 //This has modifications that use player names
 //Key <name> Value
 const IHD_inventory_modifications_list_special = {
-    "You traded with" : ", but the trade was placed on hold. The items will be delivered later on",// _.",
-    "Your trade with" : "was on hold, and the trade has now completed.",
-    "Your trade with" : "failed. The items have been returned to you.",
-    "You traded with" : "",
-    "Gift sent to" : "",
-    "Your held trade with" : "was canceled. The items have been returned to you.",
+    "0": {
+        "You traded with": ", but the trade was placed on hold. The items will be delivered later on",// _.",
+    },
+    "1": {
+        "Your trade with": "was on hold, and the trade has now completed.",
+    },
+    "2": {
+        "Your trade with": "failed. The items have been returned to you.",
+    },
+    "3": {
+        "You traded with": "",
+    },
+    "4": {
+        "Gift sent to": "",
+    },
+    "5": {
+        "Your held trade with": "was canceled. The items have been returned to you.",
+    }
 }
+
+const IHD_special_event_modifier = 100; //Offset that we will add to the location of the special lists when creating ids
 //Special name for the specials when converting back from IDs
 const IHD_inventory_modifications_list_special_names = [
     "Trade placed on hold",
@@ -255,6 +272,7 @@ function IHD_enableButton() {
     }
     IHD_download_button.disabled = false;
     IHD_ready_to_load = true;
+    IHD_json_object.dictionary = invertDictionary();
     IHD_download(JSON.stringify(IHD_json_object), 'inventory_history.json', 'application/json');
 }
 
@@ -283,20 +301,18 @@ function IHD_eventToEventId(event) {
     if(IHD_inventory_modifications_list.includes(event)) {
         return IHD_inventory_modifications_list.indexOf(event);
     } else {
-        var i = 0;
-        for (const [key, value] of Object.entries(IHD_inventory_modifications_list_special)) {
-            if(event.includes(key) && event.includes(value)) {
-                return i + 100;
+        for(var i = 0; i < Object.keys(IHD_inventory_modifications_list_special).length; i++) {
+            if(event.includes(Object.keys(IHD_inventory_modifications_list_special[i])[0]) && event.includes(Object.values(IHD_inventory_modifications_list_special[i])[0])) {
+               return i + IHD_special_event_modifier;
             }
-            i++;
         }
     }
     return event;
 }
 
 function IHD_eventIdToEvent(eventId) {
-    if(eventId > 100) {
-        eventId - 100;
+    if(eventId >= IHD_special_event_modifier) {
+        eventId - IHD_special_event_modifier;
         return Object.keys(IHD_inventory_modifications_list_special_names)[eventId];
     } else {
         return Object.keys(IHD_inventory_modifications_list)[eventId];
@@ -309,7 +325,8 @@ function IHD_loadMoreItems() {
     var request_data = {
         ajax: 1,
         cursor: g_historyCursor,
-        sessionid: g_sessionID
+        sessionid: g_sessionID,
+        app: [440]
     };
 
     IHD_prev_cursor = g_historyCursor;
@@ -322,7 +339,7 @@ function IHD_loadMoreItems() {
     }).done( function( data ) {
         if ( data.success )
         {
-            console.log("IHD - Data was retrieved successfully.");
+            //console.log("IHD - Data was retrieved successfully."); //This was possibly causing a lot of lag after a long time
             IHD_retry_counter = 0;
             if( data.html && data.descriptions) {
                 $J('#inventory_history_table').append( data.html );
@@ -380,7 +397,7 @@ function IHD_loadMoreItems() {
 //This uses the eventID create function so if that has a serious change this also needs updated.
 function IHD_shouldRecordEvent(eventId) {
     if(document.getElementById("IHD_filter_trades").checked) {
-       if(eventId > 100 || eventId < 6 || eventId == 9) { //Dynamic trade messages, scm and traded messages, 9 is in game store purchase
+       if(eventId >= IHD_special_event_modifier || eventId < 6 || eventId == 9) { //Dynamic trade messages, scm and traded messages, 9 is in game store purchase
            return false;
        }
     }
@@ -438,8 +455,8 @@ function IHD_saveLastEventUsed(lastEvent) {
        && IHD_crate_items_used.includes(IHD_used_temp_obj.items_lost[0].market_hash_name)) {
         IHD_used_temp_obj.event = 8;
     }
-    IHD_json_object[IHD_counter] = IHD_used_temp_obj;
-    IHD_counter++;
+    IHD_json_object[IHD_obj_counter] = IHD_used_temp_obj;
+    IHD_obj_counter++;
     IHD_last_event_used = lastEvent;
     IHD_used_temp_obj = {};
 }
@@ -455,7 +472,6 @@ Data we want is:
     *Wear
     *Secondary Quality
 
-?Itemdef instead of names to save space might be worth doing?
 */
 function IHD_tradeHistoryRowToJson() {
     var IHD_inventory_event = {};
@@ -477,6 +493,7 @@ function IHD_tradeHistoryRowToJson() {
     var IHD_items_temp2 = this.getElementsByClassName("tradehistory_items_plusminus")[1];
     var IHD_items_gained = {};
     var IHD_items_lost = {};
+    var IHD_items_hold = {};
     if(IHD_items_temp1) {
         if(IHD_items_temp1.textContent == "+") {
             IHD_items_gained = JSON.parse(JSON.stringify(IHD_itemsToJson(IHD_items_temp1.nextElementSibling))); //These JSON.parse calls probably aren't needed and was just some debugging for a different problem
@@ -484,6 +501,9 @@ function IHD_tradeHistoryRowToJson() {
         } else if (IHD_items_temp1.textContent == "-") {
             IHD_items_lost = JSON.parse(JSON.stringify(IHD_itemsToJson(IHD_items_temp1.nextElementSibling))); //Possibly remove all of them later
             IHD_inventory_event.items_lost = IHD_items_lost;
+        } else if (IHD_eventId == 100) {
+            IHD_items_hold = JSON.parse(JSON.stringify(IHD_itemsToJson(IHD_items_temp1.nextElementSibling)));
+            IHD_inventory_event.items_on_hold = IHD_items_hold;
         } else {
             console.log("IHD - Unexpected text; not + or - instead was " + IHD_items_temp1.textContent + " for date: " + IHD_time);
         }
@@ -495,6 +515,9 @@ function IHD_tradeHistoryRowToJson() {
         } else if (IHD_items_temp2.textContent == "-") {
             IHD_items_lost = JSON.parse(JSON.stringify(IHD_itemsToJson(IHD_items_temp2.nextElementSibling)));
             IHD_inventory_event.items_lost = IHD_items_lost;
+        } else if (IHD_eventId == 100) {
+            IHD_items_hold = JSON.parse(JSON.stringify(IHD_itemsToJson(IHD_items_temp1.nextElementSibling)));
+            IHD_inventory_event.items_on_hold = IHD_items_hold;
         } else {
             console.log("IHD - Unexpected text; not + or - instead was " + IHD_items_temp2.textContent);
         }
@@ -518,8 +541,8 @@ function IHD_tradeHistoryRowToJson() {
            }
        }
     } else { //Normal event
-        IHD_json_object[IHD_counter] = IHD_inventory_event;
-        IHD_counter++;
+        IHD_json_object[IHD_obj_counter] = IHD_inventory_event;
+        IHD_obj_counter++;
     }
 }
 
@@ -544,7 +567,6 @@ function IHD_itemsToJson(itemDiv) {
         var IHD_item_data = g_rgDescriptions[el.getAttribute("data-appid")][IHD_item_combinedID];
         if(IHD_item_data) {
             for (const [key, value] of Object.entries(IHD_item_data)) {
-                //IHD_item_json = {};
                 if(!IHD_item_attribute_blacklist.includes(key) && value) {
                     IHD_item_json[key] = value;
                 }
@@ -563,6 +585,15 @@ function IHD_itemsToJson(itemDiv) {
                 }
                 if(key == "app_data") {
                     IHD_item_json.index = value.def_index;
+                }
+                if(key == "market_hash_name") {
+                   if(IHD_dictionary[value]) {
+                       IHD_item_json.name = IHD_dictionary[value];
+                   } else {
+                       IHD_dictionary[value] = IHD_dict_counter;
+                       IHD_item_json.name = IHD_dict_counter;
+                       IHD_dict_counter++;
+                   }
                 }
             }
             IHD_items_json[i] = JSON.parse(JSON.stringify(IHD_item_json));
@@ -584,3 +615,41 @@ function IHD_download(content, fileName, contentType) {
     URL.revokeObjectURL(a.href);
     console.log("Total skipped assets: " + IHD_skipped_asset_counter);
 }
+//Return our dicetionary with the numbers as keys instead of the names as keys
+function invertDictionary() {
+    var invertedDictionary = {};
+    for (const [key, value] of Object.entries(IHD_dictionary)) {
+        invertedDictionary[value] = key;
+    }
+
+    return invertedDictionary;
+}
+
+//Ignore these blanks, adding things at the very bottom makes my browser's editor freak out
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
