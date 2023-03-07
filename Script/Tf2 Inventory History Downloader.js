@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.4.2
+// @version      0.4.3
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -499,13 +499,13 @@ function IHD_tradeHistoryRowToJson() {
     var IHD_items_hold = {};
     if(IHD_items_temp1) {
         if(IHD_items_temp1.textContent == "+") {
-            IHD_items_gained = JSON.parse(JSON.stringify(IHD_itemsToJson(IHD_items_temp1.nextElementSibling))); //These JSON.parse calls probably aren't needed and was just some debugging for a different problem
+            IHD_items_gained = IHD_itemsToJson(IHD_items_temp1.nextElementSibling);
             IHD_inventory_event.items_gained = IHD_items_gained;
         } else if (IHD_items_temp1.textContent == "-") {
-            IHD_items_lost = JSON.parse(JSON.stringify(IHD_itemsToJson(IHD_items_temp1.nextElementSibling))); //Possibly remove all of them later
+            IHD_items_lost = IHD_itemsToJson(IHD_items_temp1.nextElementSibling);
             IHD_inventory_event.items_lost = IHD_items_lost;
         } else if (IHD_eventId == 100) {
-            IHD_items_hold = JSON.parse(JSON.stringify(IHD_itemsToJson(IHD_items_temp1.nextElementSibling)));
+            IHD_items_hold = IHD_itemsToJson(IHD_items_temp1.nextElementSibling);
             IHD_inventory_event.items_on_hold = IHD_items_hold;
         } else {
             console.log("IHD - Unexpected text; not + or - instead was " + IHD_items_temp1.textContent + " for date: " + IHD_time);
@@ -513,13 +513,13 @@ function IHD_tradeHistoryRowToJson() {
     }
     if(IHD_items_temp2) {
         if(IHD_items_temp2.textContent == "+") {
-            IHD_items_gained = JSON.parse(JSON.stringify(IHD_itemsToJson(IHD_items_temp2.nextElementSibling)));
+            IHD_items_gained = IHD_itemsToJson(IHD_items_temp2.nextElementSibling);
             IHD_inventory_event.items_gained = IHD_items_gained;
         } else if (IHD_items_temp2.textContent == "-") {
-            IHD_items_lost = JSON.parse(JSON.stringify(IHD_itemsToJson(IHD_items_temp2.nextElementSibling)));
+            IHD_items_lost = IHD_itemsToJson(IHD_items_temp2.nextElementSibling);
             IHD_inventory_event.items_lost = IHD_items_lost;
         } else if (IHD_eventId == 100) {
-            IHD_items_hold = JSON.parse(JSON.stringify(IHD_itemsToJson(IHD_items_temp1.nextElementSibling)));
+            IHD_items_hold = IHD_itemsToJson(IHD_items_temp1.nextElementSibling);
             IHD_inventory_event.items_on_hold = IHD_items_hold;
         } else {
             console.log("IHD - Unexpected text; not + or - instead was " + IHD_items_temp2.textContent);
@@ -553,7 +553,7 @@ function IHD_tradeHistoryRowToJson() {
 function IHD_itemsToJson(itemDiv) {
     var IHD_items_json = {};
     var i = 0;
-    Array.prototype.forEach.call(itemDiv.getElementsByClassName("history_item"), function(el) {
+    Array.from(itemDiv.getElementsByClassName("history_item")).forEach((el) => {
         var IHD_item_json = {};
         var IHD_item_classid = el.getAttribute("data-classid")
         var IHD_item_instanceid = el.getAttribute("data-instanceid")
