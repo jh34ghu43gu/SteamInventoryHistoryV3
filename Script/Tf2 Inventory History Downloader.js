@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.4.3
+// @version      0.4.4
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -175,7 +175,7 @@ const IHD_crate_items_used = [
     "Unlocked Creepy Spy Crate"
 ]
 const IHD_item_attribute_map = { //TODO convience feature
-    "market_hash_name":"name",
+    "market_hash_name": "name",
 };
 const IHD_item_qualities = [ //TODO convience feature
     ""
@@ -183,7 +183,7 @@ const IHD_item_qualities = [ //TODO convience feature
 
 waitForKeyElements(".inventory_history_pagingrow", IHD_addDownloadButton);
 
-function IHD_addDownloadButton (jNode) {
+function IHD_addDownloadButton(jNode) {
     var IHD_download_button = document.createElement("button");
     IHD_download_button.id = "IHD_download_button";
     IHD_download_button.innerText = "Download as json";
@@ -242,11 +242,11 @@ function IHD_addDownloadButton (jNode) {
         IHD_filter_mvm.disabled = true;
         IHD_checkForCursorInput();
 
-        IHD_loop = setInterval(()=>{
-            if(IHD_ready_to_load) {
+        IHD_loop = setInterval(() => {
+            if (IHD_ready_to_load) {
                 IHD_ready_to_load = false;
                 IHD_gatherVisibleItems();
-                if(!Array.isArray(g_historyCursor)) { //If you are on the last page and try to download it will loop back to the start because history cursor is an empty array.
+                if (!Array.isArray(g_historyCursor)) { //If you are on the last page and try to download it will loop back to the start because history cursor is an empty array.
                     IHD_loadMoreItems();
                 } else {
                     IHD_enableButton();
@@ -260,11 +260,11 @@ function IHD_addDownloadButton (jNode) {
 //Output where we stopped at, restore the download button, disable the stop button, and prompt for download.
 function IHD_enableButton() {
     clearInterval(IHD_loop);
-    if(g_historyCursor && !Array.isArray(g_historyCursor)) {
+    if (g_historyCursor && !Array.isArray(g_historyCursor)) {
         var IHD_progress = g_historyCursor.time + " " + g_historyCursor.time_frac + " " + g_historyCursor.s;
         console.log("Download stopped at cursor: " + IHD_progress);
         IHD_cursor_input.value = IHD_progress;
-    } else if(IHD_prev_cursor) {
+    } else if (IHD_prev_cursor) {
         IHD_progress = IHD_prev_cursor.time + " " + IHD_prev_cursor.time_frac + " " + IHD_prev_cursor.s;
         console.log("Download stopped at cursor: " + IHD_progress);
         IHD_cursor_input.value = IHD_progress;
@@ -278,7 +278,7 @@ function IHD_enableButton() {
 }
 
 function IHD_checkForCursorInput() {
-    if(document.getElementById("IHD_cursor_input").value) {
+    if (document.getElementById("IHD_cursor_input").value) {
         var IHD_text = document.getElementById("IHD_cursor_input").value.split(" ");
         console.log("IHD - Found starting cursor input of " + IHD_text);
         g_historyCursor.time = IHD_text[0];
@@ -299,12 +299,12 @@ function IHD_gatherVisibleItems() {
 
 //Translate events into ids, events that have dynamic player names recieve an id of 100 something
 function IHD_eventToEventId(event) {
-    if(IHD_inventory_modifications_list.includes(event)) {
+    if (IHD_inventory_modifications_list.includes(event)) {
         return IHD_inventory_modifications_list.indexOf(event);
     } else {
-        for(var i = 0; i < Object.keys(IHD_inventory_modifications_list_special).length; i++) {
-            if(event.includes(Object.keys(IHD_inventory_modifications_list_special[i])[0]) && event.includes(Object.values(IHD_inventory_modifications_list_special[i])[0])) {
-               return i + IHD_special_event_modifier;
+        for (var i = 0; i < Object.keys(IHD_inventory_modifications_list_special).length; i++) {
+            if (event.includes(Object.keys(IHD_inventory_modifications_list_special[i])[0]) && event.includes(Object.values(IHD_inventory_modifications_list_special[i])[0])) {
+                return i + IHD_special_event_modifier;
             }
         }
     }
@@ -312,7 +312,7 @@ function IHD_eventToEventId(event) {
 }
 
 function IHD_eventIdToEvent(eventId) {
-    if(eventId >= IHD_special_event_modifier) {
+    if (eventId >= IHD_special_event_modifier) {
         eventId - IHD_special_event_modifier;
         return Object.keys(IHD_inventory_modifications_list_special_names)[eventId];
     } else {
@@ -337,13 +337,12 @@ function IHD_loadMoreItems() {
         type: "GET",
         url: g_strProfileURL + "/inventoryhistory/",
         data: request_data
-    }).done( function( data ) {
-        if ( data.success )
-        {
+    }).done(function (data) {
+        if (data.success) {
             //console.log("IHD - Data was retrieved successfully."); //This was possibly causing a lot of lag after a long time
             IHD_retry_counter = 0;
-            if( data.html && data.descriptions) {
-                $J('#inventory_history_table').append( data.html );
+            if (data.html && data.descriptions) {
+                $J('#inventory_history_table').append(data.html);
                 g_rgDescriptions = data.descriptions;
                 //IHD_gatherVisibleItems();
             } else {
@@ -351,24 +350,22 @@ function IHD_loadMoreItems() {
                 IHD_enableButton();
             }
 
-            if ( data.cursor )
-            {
+            if (data.cursor) {
                 g_historyCursor = data.cursor;
                 IHD_ready_to_load = true;
             }
-            else
-            {
+            else {
                 console.warn("IHD - Data did not return a cursor. Probably at end of history.");
                 IHD_gatherVisibleItems();
                 IHD_enableButton();
             }
         } else {
-            if(!(data.error && data.error == "There was a problem loading your inventory history.")) {
+            if (!(data.error && data.error === "There was a problem loading your inventory history.")) {
                 console.warn("IHD - Data finished but did not succeed, dumping data object and restoring g_historyCursor.");
                 console.warn(data);
             }
             g_historyCursor = IHD_prev_cursor;
-            if(IHD_retry_counter > IHD_max_retries) {
+            if (IHD_retry_counter > IHD_max_retries) {
                 IHD_enableButton();
                 IHD_retry_counter = 0;
             } else {
@@ -376,22 +373,20 @@ function IHD_loadMoreItems() {
                 IHD_ready_to_load = true;
             }
         }
-    }).fail( function( data ) {
+    }).fail(function (data) {
         g_historyCursor = IHD_prev_cursor;
 
-        if ( data.status == 429 )
-        {
+        if (data.status === 429) {
             console.warn("IHD - Error 429 - Too many requests");
             IHD_enableButton();
         }
-        else
-        {
+        else {
             console.warn("IHD - Data failed, unknown error status: " + data.status);
             console.warn("IHD - Dumping data object.");
             console.warn(data);
             IHD_enableButton();
         }
-    }).always( function() {
+    }).always(function () {
         //$J('#inventory_history_loading').hide();
     });
 }
@@ -399,21 +394,21 @@ function IHD_loadMoreItems() {
 //Function that sees if our filters want us to record an event
 //This uses the eventID create function so if that has a serious change this also needs updated.
 function IHD_shouldRecordEvent(eventId) {
-    if(document.getElementById("IHD_filter_trades").checked) {
-       if(eventId >= IHD_special_event_modifier || eventId < 6 || eventId == 9) { //Dynamic trade messages, scm and traded messages, 9 is in game store purchase
-           return false;
-       }
-    }
-    if(document.getElementById("IHD_filter_mvm").checked) {
-        if(eventId == 6 || eventId == 7) {
-            return true;
-        } else if(!document.getElementById("IHD_filter_unbox").checked) {
+    if (document.getElementById("IHD_filter_trades").checked) {
+        if (eventId >= IHD_special_event_modifier || eventId < 6 || eventId === 9) { //Dynamic trade messages, scm and traded messages, 9 is in game store purchase
             return false;
         }
     }
-    if(document.getElementById("IHD_filter_unbox").checked) {
+    if (document.getElementById("IHD_filter_mvm").checked) {
+        if (eventId === 6 || eventId === 7) {
+            return true;
+        } else if (!document.getElementById("IHD_filter_unbox").checked) {
+            return false;
+        }
+    }
+    if (document.getElementById("IHD_filter_unbox").checked) {
         //Unboxed, trade up, recieved a gift, used. The last two are for unlocked crates, only want recieved a gift if the last event was a used event.
-        if(eventId == 8 || eventId == 10) {
+        if (eventId === 8 || eventId === 10) {
             return true;
         } else {
             return IHD_usedEventIsUnbox(eventId, false);
@@ -426,23 +421,23 @@ function IHD_shouldRecordEvent(eventId) {
 //Deals with the used event -> unbox event logic
 //Returns false if not an unbox event and true if it is an unbox event or potentially could become one
 function IHD_usedEventIsUnbox(eventId, save) {
-    if((IHD_last_event_used > 0 && eventId == 20)) {
+    if ((IHD_last_event_used > 0 && eventId === 20)) {
         //We got a gift and we are currently tracking an unbox conversion so return true
         //console.log("TRUE Event is a gift and we are an unbox event " + eventId);
         return true;
-    } else if (IHD_last_event_used == 2 && eventId == 21) {
+    } else if (IHD_last_event_used === 2 && eventId === 21) {
         //We were in a valid conversion and need to stop because we potentially have a new one starting so save and return true
         //console.log("TRUE Event is a used and we just left an unbox event " + eventId);
-        if(save) { IHD_saveLastEventUsed(1); }
+        if (save) { IHD_saveLastEventUsed(1); }
         return true;
-    } else if (eventId == 21) {
+    } else if (eventId === 21) {
         //Potentially an unbox conversion, return true
         //console.log("TRUE Event is a used and we are possibly an unbox event " + eventId);
         return true;
-    } else if(IHD_last_event_used > 0) {
+    } else if (IHD_last_event_used > 0) {
         //We were in a (potential) conversion but there isn't a new one coming up so we can save the event as is and reset the tracking var and return false
         //console.log("FALSE Event is irrelevant and we were an unbox event " + eventId);
-        if(save) { IHD_saveLastEventUsed(0); }
+        if (save) { IHD_saveLastEventUsed(0); }
         return false;
     } else {
         //Passed an irrelevant event id
@@ -453,9 +448,9 @@ function IHD_usedEventIsUnbox(eventId, save) {
 
 //Save the used_temp_obj, takes the arg lastEvent which IHD_last_event_used will be set to (0 for none, 1 for used, 2 for recieved gift + used before that).
 function IHD_saveLastEventUsed(lastEvent) {
-    if(IHD_used_temp_obj.event == 21 //Change used event to unbox event if the item we used is in the crate array IHD_crate_items_used
-       && IHD_used_temp_obj.items_lost
-       && IHD_crate_items_used.includes(IHD_used_temp_obj.items_lost[0].market_hash_name)) {
+    if (IHD_used_temp_obj.event === 21 //Change used event to unbox event if the item we used is in the crate array IHD_crate_items_used
+        && IHD_used_temp_obj.items_lost
+        && IHD_crate_items_used.includes(IHD_used_temp_obj.items_lost[0].market_hash_name)) {
         IHD_used_temp_obj.event = 8;
     }
     IHD_json_object[IHD_obj_counter] = IHD_used_temp_obj;
@@ -482,7 +477,7 @@ function IHD_tradeHistoryRowToJson() {
     //Event
     var IHD_eventName = this.getElementsByClassName("tradehistory_event_description")[0].textContent.trim();
     var IHD_eventId = IHD_eventToEventId(IHD_eventName);
-    if(!IHD_shouldRecordEvent(IHD_eventId)) {
+    if (!IHD_shouldRecordEvent(IHD_eventId)) {
         this.remove();
         return;
     }
@@ -497,28 +492,28 @@ function IHD_tradeHistoryRowToJson() {
     var IHD_items_gained = {};
     var IHD_items_lost = {};
     var IHD_items_hold = {};
-    if(IHD_items_temp1) {
-        if(IHD_items_temp1.textContent == "+") {
+    if (IHD_items_temp1) {
+        if (IHD_items_temp1.textContent === "+") {
             IHD_items_gained = IHD_itemsToJson(IHD_items_temp1.nextElementSibling);
             IHD_inventory_event.items_gained = IHD_items_gained;
-        } else if (IHD_items_temp1.textContent == "-") {
+        } else if (IHD_items_temp1.textContent === "-") {
             IHD_items_lost = IHD_itemsToJson(IHD_items_temp1.nextElementSibling);
             IHD_inventory_event.items_lost = IHD_items_lost;
-        } else if (IHD_eventId == 100) {
+        } else if (IHD_eventId === 100) {
             IHD_items_hold = IHD_itemsToJson(IHD_items_temp1.nextElementSibling);
             IHD_inventory_event.items_on_hold = IHD_items_hold;
         } else {
             console.log("IHD - Unexpected text; not + or - instead was " + IHD_items_temp1.textContent + " for date: " + IHD_time);
         }
     }
-    if(IHD_items_temp2) {
-        if(IHD_items_temp2.textContent == "+") {
+    if (IHD_items_temp2) {
+        if (IHD_items_temp2.textContent === "+") {
             IHD_items_gained = IHD_itemsToJson(IHD_items_temp2.nextElementSibling);
             IHD_inventory_event.items_gained = IHD_items_gained;
-        } else if (IHD_items_temp2.textContent == "-") {
+        } else if (IHD_items_temp2.textContent === "-") {
             IHD_items_lost = IHD_itemsToJson(IHD_items_temp2.nextElementSibling);
             IHD_inventory_event.items_lost = IHD_items_lost;
-        } else if (IHD_eventId == 100) {
+        } else if (IHD_eventId === 100) {
             IHD_items_hold = IHD_itemsToJson(IHD_items_temp1.nextElementSibling);
             IHD_inventory_event.items_on_hold = IHD_items_hold;
         } else {
@@ -527,22 +522,22 @@ function IHD_tradeHistoryRowToJson() {
     }
     this.remove();
     //Used event
-    if(IHD_usedEventIsUnbox(IHD_eventId, true)) {
-       if(IHD_eventId == 21) {
-           IHD_used_temp_obj = IHD_inventory_event;
-           IHD_last_event_used = 1;
-       } else if(IHD_eventId == 20) {
-           if(IHD_last_event_used == 2) {
-               var i = Object.keys(IHD_used_temp_obj.items_gained).length;
-               for(var key in IHD_inventory_event.items_gained) { //For loop might be overkill since we only get 1 object gained
-                   IHD_used_temp_obj.items_gained[i] = IHD_inventory_event.items_gained[key];
-                   i++;
-               }
-           } else {
-               IHD_used_temp_obj.items_gained = IHD_inventory_event.items_gained;
-               IHD_last_event_used = 2;
-           }
-       }
+    if (IHD_usedEventIsUnbox(IHD_eventId, true)) {
+        if (IHD_eventId === 21) {
+            IHD_used_temp_obj = IHD_inventory_event;
+            IHD_last_event_used = 1;
+        } else if (IHD_eventId === 20) {
+            if (IHD_last_event_used === 2) {
+                var i = Object.keys(IHD_used_temp_obj.items_gained).length;
+                for (var key in IHD_inventory_event.items_gained) { //For loop might be overkill since we only get 1 object gained
+                    IHD_used_temp_obj.items_gained[i] = IHD_inventory_event.items_gained[key];
+                    i++;
+                }
+            } else {
+                IHD_used_temp_obj.items_gained = IHD_inventory_event.items_gained;
+                IHD_last_event_used = 2;
+            }
+        }
     } else { //Normal event
         IHD_json_object[IHD_obj_counter] = IHD_inventory_event;
         IHD_obj_counter++;
@@ -561,42 +556,42 @@ function IHD_itemsToJson(itemDiv) {
         //This check should stop unknown asset crashes however,
         // it might be better to let the crash happen and have the
         // user retry it since we otherwise skip the event the asset was in.
-        if(!g_rgDescriptions[el.getAttribute("data-appid")][IHD_item_combinedID]) {
+        if (!g_rgDescriptions[el.getAttribute("data-appid")][IHD_item_combinedID]) {
             console.warn("Unknown asset skipped during cursor: " + g_historyCursor + " or prev cursor: " + IHD_prev_cursor);
             console.warn("Unknown asset combinedID: " + IHD_item_combinedID);
             IHD_skipped_asset_counter++;
             return;
         }
         var IHD_item_data = g_rgDescriptions[el.getAttribute("data-appid")][IHD_item_combinedID];
-        if(IHD_item_data) {
+        if (IHD_item_data) {
             for (const [key, value] of Object.entries(IHD_item_data)) {
-                if(!IHD_item_attribute_blacklist.includes(key) && value) {
+                if (!IHD_item_attribute_blacklist.includes(key) && value) {
                     IHD_item_json[key] = value;
                 }
-                if(key == "tags") {
+                if (key === "tags") {
                     value.forEach(IHD_obj => {
                         for (const [key2, value2] of Object.entries(IHD_obj)) {
-                            if(key2.toLowerCase() == "category") {
-                                if(value2.toLowerCase() == "quality") {
+                            if (key2.toLowerCase() === "category") {
+                                if (value2.toLowerCase() === "quality") {
                                     IHD_item_json.Quality = IHD_obj.name;
-                                } else if(value2.toLowerCase() == "exterior") {
+                                } else if (value2.toLowerCase() === "exterior") {
                                     IHD_item_json.Wear = IHD_obj.name;
                                 }
                             }
                         }
                     });
                 }
-                if(key == "app_data") {
+                if (key === "app_data") {
                     IHD_item_json.index = value.def_index;
                 }
-                if(key == "market_hash_name") {
-                   if(IHD_dictionary[value]) {
-                       IHD_item_json.name = IHD_dictionary[value];
-                   } else {
-                       IHD_dictionary[value] = IHD_dict_counter;
-                       IHD_item_json.name = IHD_dict_counter;
-                       IHD_dict_counter++;
-                   }
+                if (key === "market_hash_name") {
+                    if (IHD_dictionary[value]) {
+                        IHD_item_json.name = IHD_dictionary[value];
+                    } else {
+                        IHD_dictionary[value] = IHD_dict_counter;
+                        IHD_item_json.name = IHD_dict_counter;
+                        IHD_dict_counter++;
+                    }
                 }
             }
             IHD_items_json[i] = JSON.parse(JSON.stringify(IHD_item_json));
@@ -611,14 +606,14 @@ function IHD_itemsToJson(itemDiv) {
 //Thanks stackoverflow
 function IHD_download(content, fileName, contentType) {
     var a = document.createElement("a");
-    var file = new Blob([content], {type: contentType});
+    var file = new Blob([content], { type: contentType });
     a.href = URL.createObjectURL(file);
     a.download = fileName;
     a.click();
     URL.revokeObjectURL(a.href);
     console.log("Total skipped assets: " + IHD_skipped_asset_counter);
 }
-//Return our dicetionary with the numbers as keys instead of the names as keys
+//Return our dictionary with the numbers as keys instead of the names as keys
 function invertDictionary() {
     var invertedDictionary = {};
     for (const [key, value] of Object.entries(IHD_dictionary)) {
@@ -627,32 +622,3 @@ function invertDictionary() {
 
     return invertedDictionary;
 }
-
-//Ignore these blanks, adding things at the very bottom makes my browser's editor freak out
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

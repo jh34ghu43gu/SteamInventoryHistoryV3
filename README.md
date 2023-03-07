@@ -29,6 +29,10 @@
  ### 0.4.3
  * Minor code cleanup
 
+ ### 0.4.4
+ * Even more minor code cleanups
+ * Working in VS IDE now so .gitignore update.
+
  ## 0.3
  * Filters!
    * Cannot be changed after the download is started until the page is refreshed.
