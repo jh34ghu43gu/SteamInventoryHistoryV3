@@ -23,6 +23,9 @@
  ### 0.4.1
  * Missing event name for "Name changed".
 
+ ### 0.4.2
+ * No longer outputs a message when "There was a problem loading your inventory history."
+
  ## 0.3
  * Filters!
    * Cannot be changed after the download is started until the page is refreshed.

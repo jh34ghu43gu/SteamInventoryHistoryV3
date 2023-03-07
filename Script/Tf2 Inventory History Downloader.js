@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.4.1
+// @version      0.4.2
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -363,8 +363,10 @@ function IHD_loadMoreItems() {
                 IHD_enableButton();
             }
         } else {
-            console.warn("IHD - Data finished but did not succeed, dumping data object and restoring g_historyCursor.");
-            console.warn(data);
+            if(!(data.error && data.error == "There was a problem loading your inventory history.")) {
+                console.warn("IHD - Data finished but did not succeed, dumping data object and restoring g_historyCursor.");
+                console.warn(data);
+            }
             g_historyCursor = IHD_prev_cursor;
             if(IHD_retry_counter > IHD_max_retries) {
                 IHD_enableButton();
