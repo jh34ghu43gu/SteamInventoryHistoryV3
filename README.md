@@ -33,6 +33,15 @@
  * Even more minor code cleanups
  * Working in VS IDE now so .gitignore update.
 
+ ### 0.4.5
+ * Store effects now
+ * Some more compression
+   * Assumes items are tradable and marketable by default so it will only store that data if they aren't.
+   * No more def indexes
+   * Wears are numbered 0-4 now (FN -> BS)
+   * Using the quality ids instead of names now
+ * Levels and type are isolated from the same key when applicable
+
  ## 0.3
  * Filters!
    * Cannot be changed after the download is started until the page is refreshed.

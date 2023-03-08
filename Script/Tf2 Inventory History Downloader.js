@@ -1,7 +1,7 @@
-// ==UserScript==
+﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.4.4
+// @version      0.4.5
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -43,11 +43,14 @@ const IHD_item_attribute_blacklist = [
     "cache_expiration",
     "market_tradable_restriction",
     "market_marketable_restriction",
-    "descriptions", //Might want to use something from this
+    "descriptions", //Unusual effects in here
     "tags", //We do want some things from here but we'll specifically ask for what we want
     "app_data", //Same with this^
     "market_hash_name", //We will convert these to dictionary values
-    "fraudwarnings"
+    "fraudwarnings",
+    "tradable", //Record only if it's 0
+    "marketable", //Record only if it's 0
+    "type" //We'll split level data from this
 ];
 //!!!IMPORTANT
 //If either of these modification arrays change later only add to the bottom.
@@ -174,6 +177,15 @@ const IHD_crate_items_used = [
     "Unlocked Creepy Sniper Crate",
     "Unlocked Creepy Spy Crate"
 ]
+
+//Exterior wears for paints/skins mapped to numbers
+const IHD_wear_map = {
+    "Factory New": 0,
+    "Minimal Wear": 1,
+    "Field-Tested": 2,
+    "Well-Worn": 3,
+    "Battle Scarred": 4
+};
 const IHD_item_attribute_map = { //TODO convience feature
     "market_hash_name": "name",
 };
@@ -568,21 +580,27 @@ function IHD_itemsToJson(itemDiv) {
                 if (!IHD_item_attribute_blacklist.includes(key) && value) {
                     IHD_item_json[key] = value;
                 }
+                //Assume tradable and marketable by default; only record if it's not
+                if ((key === "tradable" || key === "marketable") && value === 0) {
+                    IHD_item_json[key] = value;
+                }
                 if (key === "tags") {
                     value.forEach(IHD_obj => {
                         for (const [key2, value2] of Object.entries(IHD_obj)) {
                             if (key2.toLowerCase() === "category") {
-                                if (value2.toLowerCase() === "quality") {
-                                    IHD_item_json.Quality = IHD_obj.name;
-                                } else if (value2.toLowerCase() === "exterior") {
-                                    IHD_item_json.Wear = IHD_obj.name;
+                                if (value2.toLowerCase() === "exterior") {
+                                    if (IHD_obj.name in IHD_wear_map) {
+                                        IHD_item_json.Wear = IHD_wear_map[IHD_obj.name];
+                                    } else {
+                                        IHD_item_json.Wear = IHD_obj.name;
+                                    }
                                 }
                             }
                         }
                     });
                 }
                 if (key === "app_data") {
-                    IHD_item_json.index = value.def_index;
+                    IHD_item_json.Quality = value.quality;
                 }
                 if (key === "market_hash_name") {
                     if (IHD_dictionary[value]) {
@@ -593,6 +611,29 @@ function IHD_itemsToJson(itemDiv) {
                         IHD_dict_counter++;
                     }
                 }
+                if (key === "type" && value.length > 0) {
+                    if (value.includes("Level")) {
+                        IHD_item_json.Level = value.split(" ")[1];
+                        IHD_item_json.Type = value.slice(value.indexOf(IHD_item_json.Level) + IHD_item_json.Level.length).trim();
+                    } else {
+                        IHD_item_json.Type = value;
+                    }
+                }
+            }
+            //If it's unusual we want to grab the effect
+            if (IHD_item_json.Quality === "5") {
+                IHD_item_data.descriptions.every(IHD_obj => {
+                    for (const [key2, value2] of Object.entries(IHD_obj)) {
+                        if (typeof value2 === "string" && value2.includes("★ Unusual Effect: ")) {
+                            IHD_item_json.Effect = value2.split(": ")[1];
+                            break;
+                        }
+                    }
+                    if (IHD_item_json.Effect) {
+                        return false;
+                    }
+                    return true;
+                });
             }
             IHD_items_json[i] = JSON.parse(JSON.stringify(IHD_item_json));
             i++;
