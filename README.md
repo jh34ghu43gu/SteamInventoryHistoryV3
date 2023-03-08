@@ -42,6 +42,10 @@
    * Using the quality ids instead of names now
  * Levels and type are isolated from the same key when applicable
 
+ ### 0.4.6
+ * A bit more compression
+   * Gained and Lost fields instead of items_gained and items_lost. items_on_hold field unchanged.
+
  ## 0.3
  * Filters!
    * Cannot be changed after the download is started until the page is refreshed.

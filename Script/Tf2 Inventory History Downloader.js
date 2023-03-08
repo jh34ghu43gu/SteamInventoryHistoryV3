@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.4.5
+// @version      0.4.6
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -461,8 +461,8 @@ function IHD_usedEventIsUnbox(eventId, save) {
 //Save the used_temp_obj, takes the arg lastEvent which IHD_last_event_used will be set to (0 for none, 1 for used, 2 for recieved gift + used before that).
 function IHD_saveLastEventUsed(lastEvent) {
     if (IHD_used_temp_obj.event === 21 //Change used event to unbox event if the item we used is in the crate array IHD_crate_items_used
-        && IHD_used_temp_obj.items_lost
-        && IHD_crate_items_used.includes(IHD_used_temp_obj.items_lost[0].market_hash_name)) {
+        && IHD_used_temp_obj.Lost
+        && IHD_crate_items_used.includes(IHD_used_temp_obj.Lost[0].market_hash_name)) {
         IHD_used_temp_obj.event = 8;
     }
     IHD_json_object[IHD_obj_counter] = IHD_used_temp_obj;
@@ -507,10 +507,10 @@ function IHD_tradeHistoryRowToJson() {
     if (IHD_items_temp1) {
         if (IHD_items_temp1.textContent === "+") {
             IHD_items_gained = IHD_itemsToJson(IHD_items_temp1.nextElementSibling);
-            IHD_inventory_event.items_gained = IHD_items_gained;
+            IHD_inventory_event.Gained = IHD_items_gained;
         } else if (IHD_items_temp1.textContent === "-") {
             IHD_items_lost = IHD_itemsToJson(IHD_items_temp1.nextElementSibling);
-            IHD_inventory_event.items_lost = IHD_items_lost;
+            IHD_inventory_event.Lost = IHD_items_lost;
         } else if (IHD_eventId === 100) {
             IHD_items_hold = IHD_itemsToJson(IHD_items_temp1.nextElementSibling);
             IHD_inventory_event.items_on_hold = IHD_items_hold;
@@ -521,10 +521,10 @@ function IHD_tradeHistoryRowToJson() {
     if (IHD_items_temp2) {
         if (IHD_items_temp2.textContent === "+") {
             IHD_items_gained = IHD_itemsToJson(IHD_items_temp2.nextElementSibling);
-            IHD_inventory_event.items_gained = IHD_items_gained;
+            IHD_inventory_event.Gained = IHD_items_gained;
         } else if (IHD_items_temp2.textContent === "-") {
             IHD_items_lost = IHD_itemsToJson(IHD_items_temp2.nextElementSibling);
-            IHD_inventory_event.items_lost = IHD_items_lost;
+            IHD_inventory_event.Lost = IHD_items_lost;
         } else if (IHD_eventId === 100) {
             IHD_items_hold = IHD_itemsToJson(IHD_items_temp1.nextElementSibling);
             IHD_inventory_event.items_on_hold = IHD_items_hold;
@@ -540,13 +540,13 @@ function IHD_tradeHistoryRowToJson() {
             IHD_last_event_used = 1;
         } else if (IHD_eventId === 20) {
             if (IHD_last_event_used === 2) {
-                var i = Object.keys(IHD_used_temp_obj.items_gained).length;
-                for (var key in IHD_inventory_event.items_gained) { //For loop might be overkill since we only get 1 object gained
-                    IHD_used_temp_obj.items_gained[i] = IHD_inventory_event.items_gained[key];
+                var i = Object.keys(IHD_used_temp_obj.Gained).length;
+                for (var key in IHD_inventory_event.Gained) { //For loop might be overkill since we only get 1 object gained
+                    IHD_used_temp_obj.Gained[i] = IHD_inventory_event.Gained[key];
                     i++;
                 }
             } else {
-                IHD_used_temp_obj.items_gained = IHD_inventory_event.items_gained;
+                IHD_used_temp_obj.Gained = IHD_inventory_event.Gained;
                 IHD_last_event_used = 2;
             }
         }
