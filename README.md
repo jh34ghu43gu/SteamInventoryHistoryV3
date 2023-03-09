@@ -46,6 +46,12 @@
  * A bit more compression
    * Gained and Lost fields instead of items_gained and items_lost. items_on_hold field unchanged.
 
+ ### 0.4.7
+ * Option to store item ids
+   * Sub-option to store only original item ids (ids from events that create new items)
+     * Original ids are useful for getting backpack.tf item links to find out who currently owns your items (e.g. first unboxed unusual).
+   * Note: Steam appears to only provide these ids when items are gained, not lost items or held items.
+
  ## 0.3
  * Filters!
    * Cannot be changed after the download is started until the page is refreshed.
