@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.5
+// @version      0.5.1
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -19,7 +19,7 @@ var IHD_file_list;
 var IHD_dictionary = {};
 var IHD_loop;
 var IHD_obj_counter = 0;
-var IHD_dict_counter = 0;
+var IHD_dict_counter = 1; //Logic errors when reading if we start at 0 (inverse dictionary can't write a 0 key?)
 var IHD_skipped_asset_counter = 0;
 var IHD_ready_to_load = true;
 var IHD_prev_cursor;
@@ -29,6 +29,7 @@ var IHD_max_retries = 100; //Retry on errors (not 429) this many times.
 var IHD_items_gained_attr = "Gained";
 var IHD_items_lost_attr = "Lost";
 var IHD_items_hold_attr = "items_on_hold";
+var IHD_items_type_attr = "Type";
 
 //Valve decided to make some item uses a multiple-event thing so these vars will help us track that between event calls
 var IHD_used_temp_obj = {};
@@ -415,11 +416,20 @@ function IHD_file_items_handler(items, dictionary) {
     var IHD_temp_items = {};
     for (var i = 0; i < Object.keys(items).length; i++) {
         var IHD_temp_item = items[i];
-        if (IHD_dictionary[dictionary[items[i].name]]) {
-            IHD_temp_item.name = IHD_dictionary[dictionary[items[i].name]];
+        //Name
+        if (IHD_dictionary[dictionary[items[i]["name"]]] >= 0) {
+            IHD_temp_item["name"] = IHD_dictionary[dictionary[items[i]["name"]]];
         } else {
-            IHD_temp_item.name = IHD_dict_counter;
-            IHD_dictionary[dictionary[items[i].name]] = IHD_dict_counter;
+            IHD_dictionary[dictionary[items[i]["name"]]] = IHD_dict_counter;
+            IHD_temp_item["name"] = IHD_dict_counter;
+            IHD_dict_counter++;
+        }
+        //Type
+        if (IHD_dictionary[dictionary[items[i][IHD_items_type_attr]]] >= 0) {
+            IHD_temp_item[IHD_items_type_attr] = IHD_dictionary[dictionary[items[i][IHD_items_type_attr]]];
+        } else {
+            IHD_dictionary[dictionary[items[i][IHD_items_type_attr]]] = IHD_dict_counter;
+            IHD_temp_item[IHD_items_type_attr] = IHD_dict_counter;
             IHD_dict_counter++;
         }
         IHD_temp_items[i] = IHD_temp_item;
@@ -782,9 +792,22 @@ function IHD_itemsToJson(itemDiv, event) {
                 if (key === "type" && value.length > 0) {
                     if (value.includes("Level")) {
                         IHD_item_json.Level = value.split(" ")[1];
-                        IHD_item_json.Type = value.slice(value.indexOf(IHD_item_json.Level) + IHD_item_json.Level.length).trim();
+                        var type = value.slice(value.indexOf(IHD_item_json.Level) + IHD_item_json.Level.length).trim();
+                        if (IHD_dictionary[type]) {
+                            IHD_item_json[IHD_items_type_attr] = IHD_dictionary[type];
+                        } else {
+                            IHD_dictionary[type] = IHD_dict_counter;
+                            IHD_item_json[IHD_items_type_attr] = IHD_dict_counter;
+                            IHD_dict_counter++;
+                        }
                     } else {
-                        IHD_item_json.Type = value;
+                        if (IHD_dictionary[value]) {
+                            IHD_item_json[IHD_items_type_attr] = IHD_dictionary[value];
+                        } else {
+                            IHD_dictionary[value] = IHD_dict_counter;
+                            IHD_item_json[IHD_items_type_attr] = IHD_dict_counter;
+                            IHD_dict_counter++;
+                        }
                     }
                 }
             }
