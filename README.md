@@ -21,7 +21,7 @@
    * Large file testing after 0.5.1 (want to add 1 more change before AFKing a big file to test with).
  * Some attribute names are defined at the top of the script so they could be changed to whatever in future versions.
 
-  ## 0.5.1
+  ### 0.5.1
   * Added item types to the dictionary system
   * Fixed a bug causing missing entries in the dictionary (at least when combining files, possibly ever since V0.4).
   * "Type" attribute is also a variable now
