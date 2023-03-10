@@ -11,6 +11,16 @@
  Note: I personally experienced a 429 error after about 1200 requests in ~3 hours. Open the dev console with F12 and click on the console tab to see the reason why a download stopped. If you also recieved a 429 you should make sure to save the cursor it stopped at, and if possible leave the page open so you can recieve every event in one file. I do not know what the time frame is for these rate limits, the first time it happened I was able to load again after ~6 hours, the second time I was still getting 429s even after 7 hours 54 minutes. Try refreshing the page in a new tab and if you can load it then you can resume the download.
 # Versions
 
+ ## 0.5
+ * Previous downloads can be read into the script before starting a download.
+   * Incompatable with any downloads prior to version 0.4.6.
+     * Backwards compatability moving forward will not be enforced until after version 1.0.
+   * The file that is saved after stopping will be a combination of the added files and any events that were fetched.
+     * Since fetching doesn't start for 5 seconds after pressing the download button, users can combine files by starting and instantly stopping the download.
+     * No duplicate event checking; possibly in a later version.
+   * Large file testing after 0.5.1 (want to add 1 more change before AFKing a big file to test with).
+ * Some attribute names are defined at the top of the script so they could be changed to whatever in future versions.
+
  ## 0.4
  * Implimented a dictionary for item names to save memory/space on very large amounts of events.
  * Fixed a bug that made all "traded with" events use the same ID (Why do json objects auto sort?).

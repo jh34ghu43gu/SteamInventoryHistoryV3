@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.4.7
+// @version      0.5
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -15,6 +15,7 @@
 //NOTE: Need a breadbox opening from someone else to make sure gifted unboxes from that are recorded right, when the data display part is done
 console.log("Tf2 Inventory History Downloader Script is active.");
 var IHD_json_object = {};
+var IHD_file_list;
 var IHD_dictionary = {};
 var IHD_loop;
 var IHD_obj_counter = 0;
@@ -24,6 +25,10 @@ var IHD_ready_to_load = true;
 var IHD_prev_cursor;
 var IHD_retry_counter = 0;
 var IHD_max_retries = 100; //Retry on errors (not 429) this many times.
+//Attribute names
+var IHD_items_gained_attr = "Gained";
+var IHD_items_lost_attr = "Lost";
+var IHD_items_hold_attr = "items_on_hold";
 
 //Valve decided to make some item uses a multiple-event thing so these vars will help us track that between event calls
 var IHD_used_temp_obj = {};
@@ -222,9 +227,9 @@ const IHD_item_qualities = [ //TODO convience feature
     ""
 ];
 
-waitForKeyElements(".inventory_history_pagingrow", IHD_addDownloadButton);
+waitForKeyElements(".inventory_history_pagingrow", IHD_addButtons);
 
-function IHD_addDownloadButton(jNode) {
+function IHD_addButtons(jNode) {
     var IHD_download_button = document.createElement("button");
     IHD_download_button.id = "IHD_download_button";
     IHD_download_button.innerText = "Download as json";
@@ -237,6 +242,15 @@ function IHD_addDownloadButton(jNode) {
     IHD_stop_button.id = "IHD_stop_button";
     IHD_stop_button.innerText = "Stop download";
     IHD_stop_button.disabled = true;
+    var IHD_file_input = document.createElement("input");
+    IHD_file_input.type = "file";
+    IHD_file_input.id = "IHD_file_input";
+    IHD_file_input.accept = ".json";
+    IHD_file_input.multiple = true;
+    var IHD_file_input_label = document.createElement("label");
+    IHD_file_input_label.for = "IHD_file_input";
+    IHD_file_input_label.innerText = " Load in previous progress: ";
+
     //Filter buttons
     var IHD_filter_trades = document.createElement("input");
     IHD_filter_trades.type = "checkbox";
@@ -276,6 +290,8 @@ function IHD_addDownloadButton(jNode) {
     jNode[0].appendChild(IHD_download_button);
     jNode[0].appendChild(IHD_cursor_input);
     jNode[0].appendChild(IHD_stop_button);
+    jNode[0].appendChild(IHD_file_input_label);
+    jNode[0].appendChild(IHD_file_input);
     jNode[0].appendChild(document.createElement("br")); //Filters below this
     jNode[0].appendChild(IHD_filter_trades);
     jNode[0].appendChild(IHD_filter_trades_label);
@@ -297,6 +313,13 @@ function IHD_addDownloadButton(jNode) {
             IHD_filter_original_ids.disabled = true;
         }
     });
+    IHD_file_input.addEventListener('change', async (event) => {
+        IHD_json_object = {};
+        IHD_dictionary = {};
+        IHD_file_list = event.target.files;
+        var IHD_file_json_objects = await IHD_read_files();
+        IHD_read_file_objects(IHD_file_json_objects);
+    });
     IHD_stop_button.addEventListener("click", () => {
         IHD_stop_button.disabled = true;
         IHD_enableButton();
@@ -304,7 +327,8 @@ function IHD_addDownloadButton(jNode) {
     IHD_download_button.addEventListener("click", () => {
         IHD_download_button.disabled = true;
         IHD_stop_button.disabled = false;
-        //Don't let filters get changed after we start the download, these are NOT re-enabled until the page is refreshed
+        //Don't let filters or the file upload get changed after we start the download, these are NOT re-enabled until the page is refreshed
+        IHD_file_input.disabled = true;
         IHD_filter_unbox.disabled = true;
         IHD_filter_trades.disabled = true;
         IHD_filter_mvm.disabled = true;
@@ -326,6 +350,86 @@ function IHD_addDownloadButton(jNode) {
     });
 }
 
+//File reading section
+function IHD_read_File(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsText(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error);
+    });
+}
+
+async function IHD_read_files() {
+    var jsonObjects = [];
+    for (var file of IHD_file_list) {
+        var fileContent = await IHD_read_File(file);
+        var jsonObject = JSON.parse(fileContent);
+        jsonObjects.push(jsonObject);
+    }
+    return jsonObjects;
+}
+
+function IHD_read_file_objects(objects) {
+    for (var i = 0; i < Array.from(objects).length; i++) {
+        var IHD_file_json_obj = Array.from(objects)[i];
+        //First file is very simple; just copying everything and making sure to incriment our values accordingly
+        if (IHD_dict_counter === 0 && IHD_obj_counter === 0) {
+            for (var j = 0; j < Object.keys(IHD_file_json_obj).length; j++) {
+                if (Object.keys(IHD_file_json_obj)[j] === "dictionary") {
+                    IHD_dictionary = invertDictionary(IHD_file_json_obj.dictionary);
+                    IHD_dict_counter = Object.keys(IHD_file_json_obj.dictionary).length + 1;
+                } else {
+                    IHD_json_object[j] = IHD_file_json_obj[j];
+                    IHD_obj_counter++;
+                }
+            }
+        } else { //2nd+ files need to change our dictionary item values and also our obj counter incriments
+            var IHD_file_dictionary = IHD_file_json_obj.dictionary;
+            for (var m = 0; m < Object.keys(IHD_file_json_obj).length; m++) {
+                if (!(Object.keys(IHD_file_json_obj)[m] === "dictionary")) {
+                    IHD_event = IHD_file_json_obj[m];
+                    IHD_new_event = {};
+                    for (var k = 0; k < Object.keys(IHD_event).length; k++) {
+                        var key = Object.keys(IHD_event)[k];
+                        if (key === IHD_items_gained_attr) {
+                            IHD_new_event[IHD_items_gained_attr] = IHD_file_items_handler(IHD_event[IHD_items_gained_attr], IHD_file_dictionary);
+                        } else if (key === IHD_items_lost_attr) {
+                            IHD_new_event[IHD_items_lost_attr] = IHD_file_items_handler(IHD_event[IHD_items_lost_attr], IHD_file_dictionary);
+                        } else if (key === IHD_items_hold_attr) {
+                            IHD_new_event[IHD_items_hold_attr] = IHD_file_items_handler(IHD_event[IHD_items_hold_attr], IHD_file_dictionary);
+                        } else {
+                            IHD_new_event[key] = IHD_event[key];
+                        }
+                    }
+                    IHD_json_object[IHD_obj_counter] = IHD_new_event;
+                    IHD_obj_counter++;
+                }
+            }
+        }
+        console.log(Object.keys(IHD_dictionary).length);
+    }
+}
+//Take events item groups (gain/lost/hold) from the 2nd+ files and re-assign proper dictionary values to their items
+function IHD_file_items_handler(items, dictionary) {
+    var IHD_temp_items = {};
+    for (var i = 0; i < Object.keys(items).length; i++) {
+        var IHD_temp_item = items[i];
+        if (IHD_dictionary[dictionary[items[i].name]]) {
+            IHD_temp_item.name = IHD_dictionary[dictionary[items[i].name]];
+        } else {
+            IHD_temp_item.name = IHD_dict_counter;
+            IHD_dictionary[dictionary[items[i].name]] = IHD_dict_counter;
+            IHD_dict_counter++;
+        }
+        IHD_temp_items[i] = IHD_temp_item;
+    }
+    return IHD_temp_items;
+}
+//Leaving file reading section
+
+
+
 //This function reenables the download button and stops our progress, either because the user stopped it or we had an error
 //Output where we stopped at, restore the download button, disable the stop button, and prompt for download.
 function IHD_enableButton() {
@@ -343,7 +447,7 @@ function IHD_enableButton() {
     }
     IHD_download_button.disabled = false;
     IHD_ready_to_load = true;
-    IHD_json_object.dictionary = invertDictionary();
+    IHD_json_object.dictionary = invertDictionary(IHD_dictionary);
     IHD_download(JSON.stringify(IHD_json_object), 'inventory_history.json', 'application/json');
 }
 
@@ -565,13 +669,13 @@ function IHD_tradeHistoryRowToJson() {
     if (IHD_items_temp1) {
         if (IHD_items_temp1.textContent === "+") {
             IHD_items_gained = IHD_itemsToJson(IHD_items_temp1.nextElementSibling, IHD_eventName);
-            IHD_inventory_event.Gained = IHD_items_gained;
+            IHD_inventory_event[IHD_items_gained_attr] = IHD_items_gained;
         } else if (IHD_items_temp1.textContent === "-") {
             IHD_items_lost = IHD_itemsToJson(IHD_items_temp1.nextElementSibling, IHD_eventName);
-            IHD_inventory_event.Lost = IHD_items_lost;
+            IHD_inventory_event[IHD_items_lost_attr] = IHD_items_lost;
         } else if (IHD_eventId === 100) {
             IHD_items_hold = IHD_itemsToJson(IHD_items_temp1.nextElementSibling, IHD_eventName);
-            IHD_inventory_event.items_on_hold = IHD_items_hold;
+            IHD_inventory_event[IHD_items_hold_attr] = IHD_items_hold;
         } else {
             console.log("IHD - Unexpected text; not + or - instead was " + IHD_items_temp1.textContent + " for date: " + IHD_time);
         }
@@ -579,13 +683,13 @@ function IHD_tradeHistoryRowToJson() {
     if (IHD_items_temp2) {
         if (IHD_items_temp2.textContent === "+") {
             IHD_items_gained = IHD_itemsToJson(IHD_items_temp2.nextElementSibling, IHD_eventName);
-            IHD_inventory_event.Gained = IHD_items_gained;
+            IHD_inventory_event[IHD_items_gained_attr] = IHD_items_gained;
         } else if (IHD_items_temp2.textContent === "-") {
             IHD_items_lost = IHD_itemsToJson(IHD_items_temp2.nextElementSibling, IHD_eventName);
-            IHD_inventory_event.Lost = IHD_items_lost;
+            IHD_inventory_event[IHD_items_lost_attr] = IHD_items_lost;
         } else if (IHD_eventId === 100) {
             IHD_items_hold = IHD_itemsToJson(IHD_items_temp1.nextElementSibling, IHD_eventName);
-            IHD_inventory_event.items_on_hold = IHD_items_hold;
+            IHD_inventory_event[IHD_items_hold_attr] = IHD_items_hold;
         } else {
             console.log("IHD - Unexpected text; not + or - instead was " + IHD_items_temp2.textContent);
         }
@@ -718,10 +822,10 @@ function IHD_download(content, fileName, contentType) {
     URL.revokeObjectURL(a.href);
     console.log("Total skipped assets: " + IHD_skipped_asset_counter);
 }
-//Return our dictionary with the numbers as keys instead of the names as keys
-function invertDictionary() {
+//Return a dictionary with the keys and values reversed
+function invertDictionary(dict) {
     var invertedDictionary = {};
-    for (const [key, value] of Object.entries(IHD_dictionary)) {
+    for (const [key, value] of Object.entries(dict)) {
         invertedDictionary[value] = key;
     }
 
