@@ -21,11 +21,20 @@
    * Large file testing after 0.5.1 (want to add 1 more change before AFKing a big file to test with).
  * Some attribute names are defined at the top of the script so they could be changed to whatever in future versions.
 
-  ### 0.5.1
-  * Added item types to the dictionary system
-  * Fixed a bug causing missing entries in the dictionary (at least when combining files, possibly ever since V0.4).
-  * "Type" attribute is also a variable now
+ ### 0.5.1
+ * Added item types to the dictionary system
+ * Fixed a bug causing missing entries in the dictionary (at least when combining files, possibly ever since V0.4).
+ * "Type" attribute is also a variable now
 
+ ### 0.5.2
+ * Fixed some attribute setters not using the variables added in 0.5 and 0.5.1
+ * Used events only count as unbox events if the item lost is listed in the `IHD_crate_items_used` array.
+   * Added stockings to this list
+   * Fixed a bug where things like secret saxtons could create unbox-like events with lots of items, even though you can't get items from them.
+   * Possibly fixed another bug that caused a crash relating to this
+ * Contract borrows properly store the item gained
+   * Should stop a lot of console messages related to "+ or - not found".
+ * Note: Tested a large file parse, took a few minutes for ~19mb. Probably improvements in the next version.
 
  ## 0.4
  * Implimented a dictionary for item names to save memory/space on very large amounts of events.

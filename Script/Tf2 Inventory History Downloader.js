@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.5.1
+// @version      0.5.2
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -162,7 +162,7 @@ const IHD_inventory_modifications_list = [
 ];
 
 //These are events that create items and thus would have original item ids
-IHD_creation_events = [
+const IHD_creation_events = [
     "Played MvM Mann Up Mode",
     "MvM Squad Surplus bonus",
     "Unlocked a crate",
@@ -190,7 +190,7 @@ IHD_creation_events = [
     "Unpacked"
 ];
 
-//Crate objects that get "used" instead of unlocked
+//Crate-like objects that get "used" instead of unlocked
 const IHD_crate_items_used = [
     "Unlocked Cosmetic Crate Multi-Class",
     "Unlocked Cosmetic Crate Scout",
@@ -210,8 +210,13 @@ const IHD_crate_items_used = [
     "Unlocked Creepy Engineer Crate",
     "Unlocked Creepy Medic Crate",
     "Unlocked Creepy Sniper Crate",
-    "Unlocked Creepy Spy Crate"
+    "Unlocked Creepy Spy Crate",
+    "Gift-Stuffed Stocking"
 ]
+//They started labeling all the stockings in 2017 so create some entries up through current year
+for (var i = 2017; i <= new Date().getFullYear(); i++) {
+    IHD_crate_items_used.push("Gift-Stuffed Stocking " + i);
+}
 
 //Exterior wears for paints/skins mapped to numbers
 const IHD_wear_map = {
@@ -633,8 +638,8 @@ function IHD_usedEventIsUnbox(eventId, save) {
 //Save the used_temp_obj, takes the arg lastEvent which IHD_last_event_used will be set to (0 for none, 1 for used, 2 for recieved gift + used before that).
 function IHD_saveLastEventUsed(lastEvent) {
     if (IHD_used_temp_obj.event === 21 //Change used event to unbox event if the item we used is in the crate array IHD_crate_items_used
-        && IHD_used_temp_obj.Lost
-        && IHD_crate_items_used.includes(IHD_used_temp_obj.Lost[0].market_hash_name)) {
+        && Object.keys(IHD_used_temp_obj[IHD_items_lost_attr]).length > 0
+        && IHD_crate_items_used.includes(IHD_used_temp_obj[IHD_items_lost_attr][0].market_hash_name)) {
         IHD_used_temp_obj.event = 8;
     }
     IHD_json_object[IHD_obj_counter] = IHD_used_temp_obj;
@@ -686,6 +691,9 @@ function IHD_tradeHistoryRowToJson() {
         } else if (IHD_eventId === 100) {
             IHD_items_hold = IHD_itemsToJson(IHD_items_temp1.nextElementSibling, IHD_eventName);
             IHD_inventory_event[IHD_items_hold_attr] = IHD_items_hold;
+        } else if (IHD_eventId === 30) {
+            IHD_items_gained = IHD_itemsToJson(IHD_items_temp1.nextElementSibling, IHD_eventName);
+            IHD_inventory_event[IHD_items_gained_attr] = IHD_items_gained;
         } else {
             console.log("IHD - Unexpected text; not + or - instead was " + IHD_items_temp1.textContent + " for date: " + IHD_time);
         }
@@ -700,25 +708,31 @@ function IHD_tradeHistoryRowToJson() {
         } else if (IHD_eventId === 100) {
             IHD_items_hold = IHD_itemsToJson(IHD_items_temp1.nextElementSibling, IHD_eventName);
             IHD_inventory_event[IHD_items_hold_attr] = IHD_items_hold;
+        } else if (IHD_eventId === 30) {
+            IHD_items_gained = IHD_itemsToJson(IHD_items_temp1.nextElementSibling, IHD_eventName);
+            IHD_inventory_event[IHD_items_gained_attr] = IHD_items_gained;
         } else {
             console.log("IHD - Unexpected text; not + or - instead was " + IHD_items_temp2.textContent);
         }
     }
     this.remove();
     //Used event
-    if (IHD_usedEventIsUnbox(IHD_eventId, true)) {
+    if (((Object.keys(IHD_items_lost).length > 0 && IHD_crate_items_used.includes(IHD_items_lost[0]))
+        || (IHD_used_temp_obj[IHD_items_lost_attr] && IHD_crate_items_used.includes(IHD_used_temp_obj[IHD_items_lost_attr][0])))
+        && IHD_usedEventIsUnbox(IHD_eventId, true)) { //Objects lost are a crate AND valid used event
+
         if (IHD_eventId === 21) {
             IHD_used_temp_obj = IHD_inventory_event;
             IHD_last_event_used = 1;
         } else if (IHD_eventId === 20) {
             if (IHD_last_event_used === 2) {
-                var i = Object.keys(IHD_used_temp_obj.Gained).length;
-                for (var key in IHD_inventory_event.Gained) { //For loop might be overkill since we only get 1 object gained
-                    IHD_used_temp_obj.Gained[i] = IHD_inventory_event.Gained[key];
+                var i = Object.keys(IHD_used_temp_obj[IHD_items_gained_attr]).length;
+                for (var key in IHD_inventory_event[IHD_items_gained_attr]) { //For loop might be overkill since we only get 1 object gained
+                    IHD_used_temp_obj[IHD_items_gained_attr][i] = IHD_inventory_event[IHD_items_gained_attr][key];
                     i++;
                 }
             } else {
-                IHD_used_temp_obj.Gained = IHD_inventory_event.Gained;
+                IHD_used_temp_obj[IHD_items_gained_attr] = IHD_inventory_event[IHD_items_gained_attr];
                 IHD_last_event_used = 2;
             }
         }
