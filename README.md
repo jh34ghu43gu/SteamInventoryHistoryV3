@@ -36,6 +36,17 @@
    * Should stop a lot of console messages related to "+ or - not found".
  * Note: Tested a large file parse, took a few minutes for ~19mb. Probably improvements in the next version.
 
+ ### 0.5.3
+ * Massive improvements on first file loading, daisy-chaining file combinations recommended with the largest file going first.
+ * More item attributes tracked
+   * Spells
+   * Early EOTL Supporters
+   * Loaners
+   * Summer 2014 Adventure
+ * Fixed a bug with levels and types for limited attribute items.
+ * Fixed a bug with reading the dictionary back from file(s) creating string values for any future events gathered.
+ * Lil' bit of code cleanup and added some missing information to a log line.
+
  ## 0.4
  * Implimented a dictionary for item names to save memory/space on very large amounts of events.
  * Fixed a bug that made all "traded with" events use the same ID (Why do json objects auto sort?).

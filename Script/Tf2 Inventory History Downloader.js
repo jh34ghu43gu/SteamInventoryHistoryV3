@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.5.2
+// @version      0.5.3
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -49,7 +49,7 @@ const IHD_item_attribute_blacklist = [
     "cache_expiration",
     "market_tradable_restriction",
     "market_marketable_restriction",
-    "descriptions", //Unusual effects in here
+    "descriptions", //Unusual effects, some tags, and spells in here
     "tags", //We do want some things from here but we'll specifically ask for what we want
     "app_data", //Same with this^
     "market_hash_name", //We will convert these to dictionary values
@@ -323,8 +323,7 @@ function IHD_addButtons(jNode) {
         IHD_json_object = {};
         IHD_dictionary = {};
         IHD_file_list = event.target.files;
-        var IHD_file_json_objects = await IHD_read_files();
-        IHD_read_file_objects(IHD_file_json_objects);
+        IHD_read_file_objects(await IHD_read_files());
     });
     IHD_stop_button.addEventListener("click", () => {
         IHD_stop_button.disabled = true;
@@ -361,7 +360,9 @@ function IHD_read_File(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.readAsText(file);
-        reader.onload = () => resolve(reader.result);
+        reader.onload = () => {
+            resolve(reader.result);
+        }
         reader.onerror = () => reject(reader.error);
     });
 }
@@ -380,16 +381,12 @@ function IHD_read_file_objects(objects) {
     for (var i = 0; i < Array.from(objects).length; i++) {
         var IHD_file_json_obj = Array.from(objects)[i];
         //First file is very simple; just copying everything and making sure to incriment our values accordingly
-        if (IHD_dict_counter === 0 && IHD_obj_counter === 0) {
-            for (var j = 0; j < Object.keys(IHD_file_json_obj).length; j++) {
-                if (Object.keys(IHD_file_json_obj)[j] === "dictionary") {
-                    IHD_dictionary = invertDictionary(IHD_file_json_obj.dictionary);
-                    IHD_dict_counter = Object.keys(IHD_file_json_obj.dictionary).length + 1;
-                } else {
-                    IHD_json_object[j] = IHD_file_json_obj[j];
-                    IHD_obj_counter++;
-                }
-            }
+        if (Object.keys(IHD_dict_counter).length === 0 && Object.keys(IHD_obj_counter).length === 0) {
+            IHD_json_object = IHD_file_json_obj;
+            IHD_obj_counter = Object.keys(IHD_json_object).length;
+            IHD_dictionary = invertDictionary(IHD_file_json_obj.dictionary);
+            IHD_dict_counter = Object.keys(IHD_file_json_obj.dictionary).length + 1;
+            delete IHD_json_object["dictionary"];
         } else { //2nd+ files need to change our dictionary item values and also our obj counter incriments
             var IHD_file_dictionary = IHD_file_json_obj.dictionary;
             for (var m = 0; m < Object.keys(IHD_file_json_obj).length; m++) {
@@ -413,7 +410,6 @@ function IHD_read_file_objects(objects) {
                 }
             }
         }
-        console.log(Object.keys(IHD_dictionary).length);
     }
 }
 //Take events item groups (gain/lost/hold) from the 2nd+ files and re-assign proper dictionary values to their items
@@ -528,7 +524,6 @@ function IHD_loadMoreItems() {
         data: request_data
     }).done(function (data) {
         if (data.success) {
-            //console.log("IHD - Data was retrieved successfully."); //This was possibly causing a lot of lag after a long time
             IHD_retry_counter = 0;
             if (data.html && data.descriptions) {
                 $J('#inventory_history_table').append(data.html);
@@ -612,25 +607,20 @@ function IHD_shouldRecordEvent(eventId) {
 function IHD_usedEventIsUnbox(eventId, save) {
     if ((IHD_last_event_used > 0 && eventId === 20)) {
         //We got a gift and we are currently tracking an unbox conversion so return true
-        //console.log("TRUE Event is a gift and we are an unbox event " + eventId);
         return true;
     } else if (IHD_last_event_used === 2 && eventId === 21) {
         //We were in a valid conversion and need to stop because we potentially have a new one starting so save and return true
-        //console.log("TRUE Event is a used and we just left an unbox event " + eventId);
         if (save) { IHD_saveLastEventUsed(1); }
         return true;
     } else if (eventId === 21) {
         //Potentially an unbox conversion, return true
-        //console.log("TRUE Event is a used and we are possibly an unbox event " + eventId);
         return true;
     } else if (IHD_last_event_used > 0) {
         //We were in a (potential) conversion but there isn't a new one coming up so we can save the event as is and reset the tracking var and return false
-        //console.log("FALSE Event is irrelevant and we were an unbox event " + eventId);
         if (save) { IHD_saveLastEventUsed(0); }
         return false;
     } else {
         //Passed an irrelevant event id
-        //console.log("FALSE Event is irrelevant " + eventId);
         return false;
     }
 }
@@ -712,7 +702,7 @@ function IHD_tradeHistoryRowToJson() {
             IHD_items_gained = IHD_itemsToJson(IHD_items_temp1.nextElementSibling, IHD_eventName);
             IHD_inventory_event[IHD_items_gained_attr] = IHD_items_gained;
         } else {
-            console.log("IHD - Unexpected text; not + or - instead was " + IHD_items_temp2.textContent);
+            console.log("IHD - Unexpected text; not + or - instead was " + IHD_items_temp2.textContent + " for date: " + IHD_time);
         }
     }
     this.remove();
@@ -791,6 +781,28 @@ function IHD_itemsToJson(itemDiv, event) {
                         }
                     });
                 }
+                if (key === "descriptions" && Object.keys(value).length > 0) {
+                    var IHD_spells = {};
+                    var IHD_spell_count = 0;
+                    value.forEach(IHD_obj => {
+                        if (IHD_obj.value && IHD_obj.value.includes("(spell only active during event)")) {
+                            IHD_spells[IHD_spell_count] = IHD_obj.value;
+                            IHD_spell_count++;
+                        }
+                        if (IHD_obj.value && IHD_obj.value === "Rewarded for participating in the 2014 Summer Adventure") {
+                            IHD_item_json.Summer2014 = 1;
+                        }
+                        if (IHD_obj.value && IHD_obj.value === "Early Supporter of End of the Line Community Update") {
+                            IHD_item_json.EOTL = 1;
+                        }
+                        if (IHD_obj.value && IHD_obj.value === "( Loaner - Cannot be traded, marketed, crafted, or modified )") {
+                            IHD_item_json.Loaner = 1;
+                        }
+                    });
+                    if (Object.keys(IHD_spells).length > 0) {
+                        IHD_item_json.Spells = IHD_spells;
+                    }
+                }
                 if (key === "app_data") {
                     IHD_item_json.Quality = value.quality;
                 }
@@ -805,7 +817,13 @@ function IHD_itemsToJson(itemDiv, event) {
                 }
                 if (key === "type" && value.length > 0) {
                     if (value.includes("Level")) {
-                        IHD_item_json.Level = value.split(" ")[1];
+                        var splitVal = value.split(" ");
+                        for (var o = 0; o < splitVal.length; o++) {
+                            if (splitVal[o].trim() === "Level") {
+                                IHD_item_json.Level = splitVal[o + 1].trim();
+                                break;
+                            }
+                        }
                         var type = value.slice(value.indexOf(IHD_item_json.Level) + IHD_item_json.Level.length).trim();
                         if (IHD_dictionary[type]) {
                             IHD_item_json[IHD_items_type_attr] = IHD_dictionary[type];
@@ -863,7 +881,7 @@ function IHD_download(content, fileName, contentType) {
 function invertDictionary(dict) {
     var invertedDictionary = {};
     for (const [key, value] of Object.entries(dict)) {
-        invertedDictionary[value] = key;
+        invertedDictionary[value] = (Number(key)) ? parseInt(key) : key;
     }
 
     return invertedDictionary;
