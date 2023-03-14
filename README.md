@@ -11,6 +11,19 @@
  Note: I personally experienced a 429 error after about 1200 requests in ~3 hours. Open the dev console with F12 and click on the console tab to see the reason why a download stopped. If you also recieved a 429 you should make sure to save the cursor it stopped at, and if possible leave the page open so you can recieve every event in one file. I do not know what the time frame is for these rate limits, the first time it happened I was able to load again after ~6 hours, the second time I was still getting 429s even after 7 hours 54 minutes. Try refreshing the page in a new tab and if you can load it then you can resume the download.
 # Versions
 
+ ## 0.6
+ * Started adding data analysis.
+   * Stats button that can be pressed after a download is stopped or a file is added.
+   * Currently only reports stats for mvm and surplus events with the worst CSS buttons you've ever seen.
+     * Important stats (as noted above IHD_stats_report()) will be added in the following version 0.6.X's.
+     * 0.7 will probably make the buttons look pretty, if anyone is activly following and using this, enjoy the pain.
+   * Generating stats stops any other features from working until the page is refreshed.
+ * Bug fix: Item painted events weren't being assigned an id since I had the casing wrong.
+ * Bug noted: Received a gift from events aren't being assigned an id because they have unique steam names. Will fix later.
+ * Minor optimization for some attribute tagging.
+ * Bug(?) with spell attribute tagging fixed.
+ * Doubled the file size :gentleman:
+
  ## 0.5
  * Previous downloads can be read into the script before starting a download.
    * Incompatable with any downloads prior to version 0.4.6.

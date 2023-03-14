@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.5.3
+// @version      0.6
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -109,7 +109,7 @@ const IHD_inventory_modifications_list = [
     "Purchased from the store",
     "Traded up", //10
     "Gift wrapped",
-    "Received a gift from",
+    "Received a gift from", //This has steam usernames on the event TODO
     "You deleted",
     "Used as input to recipe",
     "Recipe completed",
@@ -149,7 +149,7 @@ const IHD_inventory_modifications_list = [
     "Added",
     "Expired", //50
     "Transmogrified",
-    "Item Painted",
+    "Item painted",
     "Removed crafter's name",
     "Refunded",
     "Unpacked",
@@ -226,13 +226,9 @@ const IHD_wear_map = {
     "Well-Worn": 3,
     "Battle Scarred": 4
 };
-const IHD_item_attribute_map = { //TODO convience feature
-    "market_hash_name": "name",
-};
-const IHD_item_qualities = [ //TODO convience feature
-    ""
-];
 
+
+//Being script
 waitForKeyElements(".inventory_history_pagingrow", IHD_addButtons);
 
 function IHD_addButtons(jNode) {
@@ -256,6 +252,14 @@ function IHD_addButtons(jNode) {
     var IHD_file_input_label = document.createElement("label");
     IHD_file_input_label.for = "IHD_file_input";
     IHD_file_input_label.innerText = " Load in previous progress: ";
+    var IHD_stats_button = document.createElement("button");
+    IHD_stats_button.id = "IHD_stats_button";
+    IHD_stats_button.innerText = "Generate Statistics Report";
+    IHD_stats_button.disabled = true;
+    var IHD_stats_progress_label = document.createElement("label"); //TODO
+    IHD_stats_progress_label.for = "IHD_stats_button";
+    IHD_stats_progress_label.id = "IHD_stats_progress_label";
+    IHD_stats_progress_label.innerText = "";
 
     //Filter buttons
     var IHD_filter_trades = document.createElement("input");
@@ -298,6 +302,8 @@ function IHD_addButtons(jNode) {
     jNode[0].appendChild(IHD_stop_button);
     jNode[0].appendChild(IHD_file_input_label);
     jNode[0].appendChild(IHD_file_input);
+    jNode[0].appendChild(IHD_stats_button);
+    jNode[0].appendChild(IHD_stats_progress_label);
     jNode[0].appendChild(document.createElement("br")); //Filters below this
     jNode[0].appendChild(IHD_filter_trades);
     jNode[0].appendChild(IHD_filter_trades_label);
@@ -324,10 +330,29 @@ function IHD_addButtons(jNode) {
         IHD_dictionary = {};
         IHD_file_list = event.target.files;
         IHD_read_file_objects(await IHD_read_files());
+        IHD_stats_button.disabled = false;
     });
     IHD_stop_button.addEventListener("click", () => {
         IHD_stop_button.disabled = true;
         IHD_enableButton();
+    });
+    IHD_stats_button.addEventListener("click", () => {
+        IHD_stats_button.disabled = true;
+        IHD_file_input.disabled = true;
+        IHD_download_button.disabled = true;
+        //filters
+        IHD_filter_unbox.hidden = true;
+        IHD_filter_trades.hidden = true;
+        IHD_filter_mvm.hidden = true;
+        IHD_filter_ids.hidden = true;
+        IHD_filter_original_ids.hidden = true;
+        IHD_filter_unbox_label.hidden = true;
+        IHD_filter_trades_label.hidden = true;
+        IHD_filter_mvm_label.hidden = true;
+        IHD_filter_ids_label.hidden = true;
+        IHD_filter_original_ids_label.hidden = true;
+
+        IHD_stats_report();
     });
     IHD_download_button.addEventListener("click", () => {
         IHD_download_button.disabled = true;
@@ -439,6 +464,347 @@ function IHD_file_items_handler(items, dictionary) {
 }
 //Leaving file reading section
 
+//Statistics generation section
+/* Events of importance
+    "Played MvM Mann Up Mode"       6
+    "MvM Squad Surplus bonus"       7
+    "Unlocked a crate"              8
+    "Purchased from the store"      9
+    "Traded up"                     10
+    "You deleted"                   13
+    "Used"                          21
+    "Found"                         37
+    "Crafted"                       42
+    "Earned"                        43
+    "Added a Spell Page"            46
+    "Purchased with Blood Money"    56
+ */
+var IHD_events_type_sorted = {};
+var IHD_inverted_dictionary = {};
+function IHD_stats_report() {
+    var IHD_stats_div = document.createElement("div");
+    IHD_stats_div.id = "IHD_stats_div";
+    $(".tradehistoryrow").each(IHD_clearTradeRow);
+    if (document.getElementsByClassName("load_more_history_area").length > 0) {
+        document.getElementsByClassName("load_more_history_area")[0].hidden = true;
+    }
+    document.getElementById("inventory_history_table").appendChild(IHD_stats_div);
+    IHD_inverted_dictionary = invertDictionary(IHD_dictionary);
+    //Go through IHD_json_object and sort events by type into their own objects
+    //var IHD_obj_size = Object.entries(IHD_json_object).length;
+    //var IHD_stats_counter = 0;
+    //var IHD_stats_progress_label = $("#IHD_stats_progress_label");
+    for (const [key, value] of Object.entries(IHD_json_object)) {
+        //if (((IHD_stats_counter / IHD_obj_size) * 100) % 2 === 0) {
+        //    IHD_stats_progress_label.innerText = "Progress: " + ((IHD_stats_counter / IHD_obj_size) * 100) + "%";
+        //}
+        if ("event" in value) {
+            if (!(value["event"] in IHD_events_type_sorted)) {
+                IHD_events_type_sorted[value["event"]] = {};
+            }
+            IHD_events_type_sorted[value["event"]][key] = value;
+        }
+        //IHD_stats_counter++;
+    }
+    IHD_mvm_stats_report();
+
+    var IHD_collapsibles = document.getElementsByClassName("collapsible");
+    for (var i = 0; i < IHD_collapsibles.length; i++) {
+        IHD_collapsibles[i].addEventListener("click", function () {
+            this.classList.toggle("active");
+            const content = this.nextElementSibling;
+            if (content.style.display === "block") {
+                content.style.display = "none";
+            } else {
+                content.style.display = "block";
+            }
+        });
+    }
+}
+
+//Mvm mission and surplus rewards
+const IHD_mvm_parts_list = [
+    "Pristine Robot Brainstorm Bulb",
+    "Pristine Robot Currency Digester",
+    "Reinforced Robot Bomb Stabilizer",
+    "Reinforced Robot Humor Suppression Pump",
+    "Reinforced Robot Emotion Detector",
+    "Battle-Worn Robot Money Furnace",
+    "Battle-Worn Robot Taunt Processor",
+    "Battle-Worn Robot KB-808"
+];
+const IHD_mvm_badge_list = [
+    "Operation Oil Spill Badge",
+    "Operation Steel Trap Badge",
+    "Operation Mecha Engine Badge",
+    "Operation Two Cities Badge",
+    "Operation Gear Grinder Badge"
+];
+const IHD_mvm_robo_hat_list = [
+    "Robot Running Man",
+    "Tin Pot",
+    "Pyrobotics Pack",
+    "Battery Bandolier",
+    "U-clank-a",
+    "Tin-1000",
+    "Medic Mech-Bag",
+    "Bolted Bushman",
+    "Stealth Steeler",
+    "RoBro 3000"
+];
+
+function IHD_mvm_stats_report() {
+    var IHD_mvm_obj = {
+        "kits": {},
+        "spec": {},
+        "prof": {},
+        "parts": {},
+        "aussies": {},
+        "botkillers": {
+            "os": {
+                "blood": {},
+                "rust": {}
+            },
+            "st": {
+                "gold": {},
+                "silver": {}
+            },
+            "me": {
+                "gold": {},
+                "silver": {}
+            },
+            "gg": {
+                "carbonado": {},
+                "diamond": {}
+            }
+        },
+        "weapons": {},
+        "tools": {
+            "paint": {}
+        },
+        "hats": {
+            "robo": {},
+            "hat": {}
+        },
+        "badges": {}
+    };
+    var IHD_surplus_obj = {
+        "weapons": {},
+        "tools": {
+            "paint": {}
+        },
+        "hats": {
+            "robo": {},
+            "hat": {}
+        }
+    };
+    //Missions and tours
+    for (const [key, value] of Object.entries(IHD_events_type_sorted["6"])) {
+        if (IHD_items_gained_attr in value) {
+            for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
+                //Tally all the items into IHD_mvm_obj
+                if ("name" in value2) {
+                    var name = IHD_inverted_dictionary[value2["name"]];
+                    if (name.includes("Golden Frying Pan") || name.includes("Australium")) {
+                        if (name in IHD_mvm_obj["aussies"]) {
+                            IHD_mvm_obj["aussies"][name]++;
+                        } else {
+                            IHD_mvm_obj["aussies"][name] = 1;
+                        }
+                    } else if (name.includes("Professional")) {
+                        if (name in IHD_mvm_obj["prof"]) {
+                            IHD_mvm_obj["prof"][name]++;
+                        } else {
+                            IHD_mvm_obj["prof"][name] = 1;
+                        }
+                    } else if (name.includes("Specialized")) {
+                        if (name in IHD_mvm_obj["spec"]) {
+                            IHD_mvm_obj["spec"][name]++;
+                        } else {
+                            IHD_mvm_obj["spec"][name] = 1;
+                        }
+                    } else if (name.includes("Killstreak")) {
+                        if (name in IHD_mvm_obj["kits"]) {
+                            IHD_mvm_obj["kits"][name]++;
+                        } else {
+                            IHD_mvm_obj["kits"][name] = 1;
+                        }
+                    } else if (IHD_mvm_parts_list.includes(name)) {
+                        if (name in IHD_mvm_obj["parts"]) {
+                            IHD_mvm_obj["parts"][name]++;
+                        } else {
+                            IHD_mvm_obj["parts"][name] = 1;
+                        }
+                    } else if (IHD_mvm_badge_list.includes(name)) {
+                        if (name in IHD_mvm_obj["badges"]) {
+                            IHD_mvm_obj["badges"][name]++;
+                        } else {
+                            IHD_mvm_obj["badges"][name] = 1;
+                        }
+                    } else if (name.includes("Botkiller")) {
+                        if (name.includes("Carbonado")) {
+                            if (name in IHD_mvm_obj["botkillers"]["gg"]["carbonado"]) {
+                                IHD_mvm_obj["botkillers"]["gg"]["carbonado"][name]++;
+                            } else {
+                                IHD_mvm_obj["botkillers"]["gg"]["carbonado"][name] = 1;
+                            }
+                        } else if (name.includes("Diamond")) {
+                            if (name in IHD_mvm_obj["botkillers"]["gg"]["diamond"]) {
+                                IHD_mvm_obj["botkillers"]["gg"]["diamond"][name]++;
+                            } else {
+                                IHD_mvm_obj["botkillers"]["gg"]["diamond"][name] = 1;
+                            }
+                        } else if (name.includes("Rust")) {
+                            if (name in IHD_mvm_obj["botkillers"]["os"]["rust"]) {
+                                IHD_mvm_obj["botkillers"]["os"]["rust"][name]++;
+                            } else {
+                                IHD_mvm_obj["botkillers"]["os"]["rust"][name] = 1;
+                            }
+                        } else if (name.includes("Blood")) {
+                            if (name in IHD_mvm_obj["botkillers"]["os"]["blood"]) {
+                                IHD_mvm_obj["botkillers"]["os"]["blood"][name]++;
+                            } else {
+                                IHD_mvm_obj["botkillers"]["os"]["blood"][name] = 1;
+                            }
+                        } else if (name.includes("Silver") && name.includes("Mk.II")) {
+                            if (name in IHD_mvm_obj["botkillers"]["me"]["silver"]) {
+                                IHD_mvm_obj["botkillers"]["me"]["silver"][name]++;
+                            } else {
+                                IHD_mvm_obj["botkillers"]["me"]["silver"][name] = 1;
+                            }
+                        } else if (name.includes("Gold") && name.includes("Mk.II")) {
+                            if (name in IHD_mvm_obj["botkillers"]["me"]["gold"]) {
+                                IHD_mvm_obj["botkillers"]["me"]["gold"][name]++;
+                            } else {
+                                IHD_mvm_obj["botkillers"]["me"]["gold"][name] = 1;
+                            }
+                        } else if (name.includes("Silver")) {
+                            if (name in IHD_mvm_obj["botkillers"]["st"]["silver"]) {
+                                IHD_mvm_obj["botkillers"]["st"]["silver"][name]++;
+                            } else {
+                                IHD_mvm_obj["botkillers"]["st"]["silver"][name] = 1;
+                            }
+                        } else if (name.includes("Gold")) {
+                            if (name in IHD_mvm_obj["botkillers"]["st"]["gold"]) {
+                                IHD_mvm_obj["botkillers"]["st"]["gold"][name]++;
+                            } else {
+                                IHD_mvm_obj["botkillers"]["st"]["gold"][name] = 1;
+                            }
+                        }
+                    } else if (IHD_weapon_list.includes(name) || IHD_weapon_list.includes(name.replace("The ", ""))) {
+                        if (name in IHD_mvm_obj["weapons"]) {
+                            IHD_mvm_obj["weapons"][name]++;
+                        } else {
+                            IHD_mvm_obj["weapons"][name] = 1;
+                        }
+                    } else if (IHD_tool_list.includes(name)) {
+                        if (name in IHD_mvm_obj["tools"]) {
+                            IHD_mvm_obj["tools"][name]++;
+                        } else {
+                            IHD_mvm_obj["tools"][name] = 1;
+                        }
+                    } else if (IHD_paint_list.includes(name)) {
+                        if (name in IHD_mvm_obj["tools"]["paint"]) {
+                            IHD_mvm_obj["tools"]["paint"][name]++;
+                        } else {
+                            IHD_mvm_obj["tools"]["paint"][name] = 1;
+                        }
+                    } else if (IHD_mvm_robo_hat_list.includes(name) || IHD_mvm_robo_hat_list.includes(name.replace("The ", ""))) {
+                        if (name in IHD_mvm_obj["hats"]["robo"]) {
+                            IHD_mvm_obj["hats"]["robo"][name]++;
+                        } else {
+                            IHD_mvm_obj["hats"]["robo"][name] = 1;
+                        }
+                    } else if (IHD_hat_list.includes(name) || IHD_hat_list.includes(name.replace("The ", ""))) {
+                        if (name in IHD_mvm_obj["hats"]["hat"]) {
+                            IHD_mvm_obj["hats"]["hat"][name]++;
+                        } else {
+                            IHD_mvm_obj["hats"]["hat"][name] = 1;
+                        }
+                    } else {
+                        if (name in IHD_mvm_obj) {
+                            IHD_mvm_obj[name]++;
+                        } else {
+                            IHD_mvm_obj[name] = 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    //Surplus
+    for (const [key, value] of Object.entries(IHD_events_type_sorted["7"])) {
+        if (IHD_items_gained_attr in value) {
+            for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
+                //Tally all the items into IHD_surplus_obj
+                if ("name" in value2) {
+                    name = IHD_inverted_dictionary[value2["name"]];
+                    if (IHD_weapon_list.includes(name) || IHD_weapon_list.includes(name.replace("The ", ""))) {
+                        if (name in IHD_surplus_obj["weapons"]) {
+                            IHD_surplus_obj["weapons"][name]++;
+                        } else {
+                            IHD_surplus_obj["weapons"][name] = 1;
+                        }
+                    } else if (IHD_tool_list.includes(name)) {
+                        if (name in IHD_surplus_obj["tools"]) {
+                            IHD_surplus_obj["tools"][name]++;
+                        } else {
+                            IHD_surplus_obj["tools"][name] = 1;
+                        }
+                    } else if (IHD_paint_list.includes(name)) {
+                        if (name in IHD_surplus_obj["tools"]["paint"]) {
+                            IHD_surplus_obj["tools"]["paint"][name]++;
+                        } else {
+                            IHD_surplus_obj["tools"]["paint"][name] = 1;
+                        }
+                    } else if (IHD_mvm_robo_hat_list.includes(name) || IHD_mvm_robo_hat_list.includes(name.replace("The ", ""))) {
+                        if (name in IHD_surplus_obj["hats"]["robo"]) {
+                            IHD_surplus_obj["hats"]["robo"][name]++;
+                        } else {
+                            IHD_surplus_obj["hats"]["robo"][name] = 1;
+                        }
+                    } else if (IHD_hat_list.includes(name) || IHD_hat_list.includes(name.replace("The ", ""))) {
+                        if (name in IHD_surplus_obj["hats"]["hat"]) {
+                            IHD_surplus_obj["hats"]["hat"][name]++;
+                        } else {
+                            IHD_surplus_obj["hats"]["hat"][name] = 1;
+                        }
+                    } else {
+                        if (name in IHD_surplus_obj) {
+                            IHD_surplus_obj[name]++;
+                        } else {
+                            IHD_surplus_obj[name] = 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    document.getElementById("IHD_stats_div").innerHTML += "<br><div><h2>MvM Loot</h2></div>" + IHD_stats_obj_to_html(IHD_mvm_obj)[0] + "<br>";
+    document.getElementById("IHD_stats_div").innerHTML += "<br><div><h2>Surplus Loot</h2></div>" + IHD_stats_obj_to_html(IHD_surplus_obj)[0] + "<br>";
+}
+
+function IHD_stats_obj_to_html(obj) {
+    var html = "";
+    var total = 0;
+    for (const [key, value] of Object.entries(obj)) {
+        if (typeof value === "number") {
+            html += "<div>" + key + ": " + value + "</div>";
+            total += value;
+        } else if (typeof value === "object") {
+            const [childHtml, childTotal] = IHD_stats_obj_to_html(value);
+            html += "<br><button class=\"collapsible\">" + key + "(" + childTotal + ")" + "</button>";
+            html += "<div class=\"content\" style=\"display: none;\">" + childHtml + "</div>";
+            total += childTotal;
+        } else {
+            console.warn("Unexpected data type when converting stats to html: " + typeof value);
+        }
+    }
+    return [html, total];
+}
+
+//Leaving statistics generation section
 
 
 //This function reenables the download button and stops our progress, either because the user stopped it or we had an error
@@ -457,6 +823,7 @@ function IHD_enableButton() {
         console.log("Download was *probably* started on the last page of history and does not have a cursor to save");
     }
     IHD_download_button.disabled = false;
+    IHD_stats_button.disabled = false;
     IHD_ready_to_load = true;
     IHD_json_object.dictionary = invertDictionary(IHD_dictionary);
     IHD_download(JSON.stringify(IHD_json_object), 'inventory_history.json', 'application/json');
@@ -788,18 +1155,15 @@ function IHD_itemsToJson(itemDiv, event) {
                         if (IHD_obj.value && IHD_obj.value.includes("(spell only active during event)")) {
                             IHD_spells[IHD_spell_count] = IHD_obj.value;
                             IHD_spell_count++;
-                        }
-                        if (IHD_obj.value && IHD_obj.value === "Rewarded for participating in the 2014 Summer Adventure") {
+                        } else if (IHD_obj.value && IHD_obj.value === "Rewarded for participating in the 2014 Summer Adventure") {
                             IHD_item_json.Summer2014 = 1;
-                        }
-                        if (IHD_obj.value && IHD_obj.value === "Early Supporter of End of the Line Community Update") {
+                        } else if (IHD_obj.value && IHD_obj.value === "Early Supporter of End of the Line Community Update") {
                             IHD_item_json.EOTL = 1;
-                        }
-                        if (IHD_obj.value && IHD_obj.value === "( Loaner - Cannot be traded, marketed, crafted, or modified )") {
+                        } else if (IHD_obj.value && IHD_obj.value === "( Loaner - Cannot be traded, marketed, crafted, or modified )") {
                             IHD_item_json.Loaner = 1;
                         }
                     });
-                    if (Object.keys(IHD_spells).length > 0) {
+                    if (IHD_spell_count > 0) {
                         IHD_item_json.Spells = IHD_spells;
                     }
                 }
@@ -886,3 +1250,689 @@ function invertDictionary(dict) {
 
     return invertedDictionary;
 }
+
+
+const IHD_weapon_list = [
+    "Scattergun",
+    "Force-A-Nature",
+    "Shortstop",
+    "Soda Popper",
+    "Baby Face's Blaster",
+    "Back Scatter",
+    "Pistol",
+    "Lugermorph",
+    "C.A.P.P.E.R",
+    "Winger",
+    "Pretty Boy's Pocket Pistol",
+    "Flying Guillotine",
+    "Bonk! Atomic Punch",
+    "Crit-a-Cola",
+    "Mad Milk",
+    "Bat",
+    "Holy Mackerel",
+    "Unarmed Combat",
+    "Batsaber",
+    "Sandman",
+    "Candy Cane",
+    "Boston Basher",
+    "Three-Rune Blase",
+    "Fan O'War",
+    "Atomizer",
+    "Wrap Assassin",
+    "Rocket Launcher",
+    "Original",
+    "Direct Hit",
+    "Black Box",
+    "Rocket Jumper",
+    "Liberty Launcher",
+    "Cow Mangler 5000",
+    "Beggar's Bazooka",
+    "Air Strike",
+    "Shotgun",
+    "Reserve Shooter",
+    "Buff Banner",
+    "Gunboats",
+    "Battalion's Backup",
+    "Concheror",
+    "Mantreads",
+    "Righteous Bison",
+    "B.A.S.E. Jumper",
+    "Panic Attack",
+    "Shovel",
+    "Equalizer",
+    "Pain Train",
+    "Half-Zatoichi",
+    "Disciplinary Action",
+    "Market Gardener",
+    "Escape Plan",
+    "Flame Thrower",
+    "Rainblower",
+    "Nostromo Napalmer",
+    "Backburner",
+    "Degreaser",
+    "Phlogistinator",
+    "Dragon's Fury",
+    "Flare Gun",
+    "Detonator",
+    "Manmelter",
+    "Scorch Shot",
+    "Thermal Thruster",
+    "Gas Passer",
+    "Fire Axe",
+    "Lollichop",
+    "Axtinguisher",
+    "Postal Pummeler",
+    "Homewrecker",
+    "Maul",
+    "Powerjack",
+    "Back Scratcher",
+    "Sharpened Volcano Fragment",
+    "Third Degree",
+    "Neon Annihilator",
+    "Hot Hand",
+    "Grenade Launcher",
+    "Loch-n-Load",
+    "Ali Baba's Wee Booties",
+    "Bootlegger",
+    "Loose Cannon",
+    "Iron Bomber",
+    "Stickybomb Launcher",
+    "Scottish Resistance",
+    "Chargin' Targe",
+    "Sticky Jumper",
+    "Splendid Screen",
+    "Tide Turner",
+    "Quickiebomb Launcher",
+    "Bottle",
+    "Scottish Handshake",
+    "Eyelander",
+    "Nessie's Nine Iron",
+    "Scotsman's Skullcutter",
+    "Pain Train",
+    "Ullapool Caber",
+    "Claidheamh Mòr",
+    "Persian Persuader",
+    "Minigun",
+    "Iron Curtain",
+    "Natascha",
+    "Brass Beast",
+    "Tomislav",
+    "Huo-Long Heater",
+    "Family Business",
+    "Sandvich",
+    "Dalokohs Bar",
+    "Buffalo Steak Sandvich",
+    "Second Banana",
+    "Fists",
+    "Apoco-Fists",
+    "Killing Gloves of Boxing",
+    "Gloves of Running Urgently",
+    "Bread Bite",
+    "Warrior's Spirit",
+    "Fists of Steel",
+    "Eviction Notice",
+    "Holiday Punch",
+    "Frontier Justice",
+    "Widowmaker",
+    "Pomson 6000",
+    "Rescue Ranger",
+    "Panic Attack",
+    "Wrangler",
+    "Short Circuit",
+    "Wrench",
+    "Gunslinger",
+    "Southern Hospitality",
+    "Jag",
+    "Eureka Effect",
+    "Syringe Gun",
+    "Blutsauger",
+    "Crusader's Crossbow",
+    "Overdose",
+    "Medi Gun",
+    "Quick-Fix",
+    "Kritzkrieg",
+    "Vaccinator",
+    "Bonesaw",
+    "Ubersaw",
+    "Vita-Saw",
+    "Amputator",
+    "Solemn Vow",
+    "Sniper Rifle",
+    "AWPer Hand",
+    "Huntsman",
+    "Fortified Compound",
+    "Sydney Sleeper",
+    "Bazaar Bargain",
+    "Machina",
+    "Shooting Star",
+    "Hitman's Heatmaker",
+    "Classic",
+    "Submachine Gun",
+    "Cleaner's Carbine",
+    "Jarate",
+    "Razorback",
+    "Darwin's Danger Shield",
+    "Cozy Camper",
+    "Kukri",
+    "Tribalman's Shiv",
+    "Bushwacka",
+    "Shahanshah",
+    "Revolver",
+    "Big Kill",
+    "Ambassador",
+    "L'Etranger",
+    "Enforcer",
+    "Diamondback",
+    "Knife",
+    "Sharp Dresser",
+    "Black Rose",
+    "Your Eternal Reward",
+    "Wanga Prick",
+    "Conniver's Kunai",
+    "Big Earner",
+    "Spy-cicle",
+    "Cloak and Dagger",
+    "Dead Ringer",
+    "Red-Tape Recorder",
+    "Frying Pan",
+    "Conscientious Objector",
+    "Freedom Staff",
+    "Bat Outta Hell",
+    "Ham Shank",
+    "Sun-on-a-Stick"
+];
+
+const IHD_tool_list = [
+    "Name Tag",
+    "Description Tag",
+    "Decal Tool",
+    "Giftapult",
+    "Dueling Mini-Game"
+];
+
+const IHD_paint_list = [
+    "A Color Similar to Slate",
+    "A Deep Commitment to Purple",
+    "A Distinctive Lack of Hue",
+    "A Mann's Mint",
+    "After Eight",
+    "Aged Moustache Grey",
+    "An Extraordinary Abundance of Tinge",
+    "Australium Gold",
+    "Color No. 216-190-216",
+    "Dark Salmon Injustice",
+    "Drably Olive",
+    "Indubitably Green",
+    "Mann Co. Orange",
+    "Muskelmannbraun",
+    "Noble Hatter's Violet",
+    "Peculiarly Drab Tincture",
+    "Pink as Hell",
+    "Radigan Conagher Brown",
+    "The Bitter Taste of Defeat and Lime",
+    "The Color of a Gentlemann's Business Pants",
+    "Ye Olde Rustic Colour",
+    "Zepheniah's Greed",
+    "An Air of Debonair",
+    "Balaclavas Are Forever",
+    "Cream Spirit",
+    "Operator's Overalls",
+    "Team Spirit",
+    "The Value of Teamwork",
+    "Waterlogged Lab Coat"
+];
+
+const IHD_hat_list = [
+    "Human Cannonball",
+    "Champ Stamp",
+    "Triad Trinket",
+    "Marxman",
+    "Bonk Helm",
+    "Ye Olde Baker Boy",
+    "Baseball Bill's Sports Shine",
+    "Troublemaker's Tossle Cap",
+    "Whoopee Cap",
+    "Milkman",
+    "Bombing Run",
+    "Flipped Trilby",
+    "Bonk Boy",
+    "El Jefe",
+    "Backwards Ballcap",
+    "Stereoscopic Shades",
+    "Hermes",
+    "Big Elfin Deal",
+    "Bootie Time",
+    "Boston Boom-Bringer",
+    "Fast Learner",
+    "Front Runner",
+    "Fed-Fightin' Fedora",
+    "Dillinger's Duffel",
+    "Track Terrorizer",
+    "Spooky Shoes",
+    "Digit Divulger",
+    "Bigg Mann on Campus",
+    "Cool Cat Cardigan",
+    "Greased Lightning",
+    "Caffeine Cooler",
+    "Half-Pipe Hurdler",
+    "Delinquent's Down Vest",
+    "Flapjack",
+    "Chucklenuts",
+    "Little Drummer Mann",
+    "Scout Shako",
+    "Runner's Warm-Up",
+    "Frickin' Sweet Ninja Hood",
+    "Southie Shinobi",
+    "Red Socks",
+    "Paisley Pro",
+    "Argyle Ace",
+    "Pomade Prince",
+    "Bootenkhamuns",
+    "Orion's Belt",
+    "Stainless Pot",
+    "Tyrant's Helm",
+    "Killer's Kabuto",
+    "Sergeant's Drill Hat",
+    "Grenadier's Softcap",
+    "Chieftain's Challenge",
+    "Stout Shako",
+    "Exquisite Rack",
+    "Defiant Spartan",
+    "Honcho's Headgear",
+    "Furious Fukaamigasa",
+    "Jumper's Jeepcap",
+    "Brain Bucket",
+    "Lord Cockswain's Pith Helmet",
+    "Lord Cockswain's Novelty Mutton Chops and Pipe",
+    "Armored Authority",
+    "Fancy Dress Uniform",
+    "Infernal Impaler",
+    "Kringle Collection",
+    "Lucky Shot",
+    "Conquistador",
+    "Captain's Cocktails",
+    "Helmet Without a Home",
+    "War Pig",
+    "Soldier's Stogie",
+    "Soldier's Slope Scopers",
+    "Gilded Guard",
+    "Cloud Crasher",
+    "Valley Forge",
+    "Compatriot",
+    "Caribbean Conqueror",
+    "Colonial Clogs",
+    "Whirly Warrior",
+    "Rebel Rouser",
+    "Shogun's Shoulder Guard",
+    "Hornblower",
+    "Lieutenant Bites",
+    "Brawling Buccaneer",
+    "Founding Father",
+    "Slo-Poke",
+    "Antarctic Parka",
+    "Marshall's Mutton Chops",
+    "Classified Coif",
+    "Spook Specs",
+    "Man in Slacks",
+    "Respectless Rubber Glove",
+    "Brigade Helm",
+    "Triboniophorus Tyrannus",
+    "Whiskered Gentleman",
+    "Vintage Merryweather",
+    "Attendant",
+    "Old Guadalajara",
+    "Napper's Respite",
+    "Handyman's Handle",
+    "Pyromancer's Mask",
+    "Prancer's Pride",
+    "Madame Dixie",
+    "Hottie's Hoodie",
+    "Sight for Sore Eyes",
+    "Connoisseur's Cap",
+    "Dead Cone",
+    "Stately Steel Toe",
+    "Last Breath",
+    "Apparition's Aspect",
+    "Moonman Backpack",
+    "Bubble Pipe",
+    "Little Buddy",
+    "Birdcage",
+    "Flamboyant Flamenco",
+    "Cremator's Conscience",
+    "Head Warmer",
+    "Jingle Belt",
+    "Infernal Orchestrina",
+    "Burning Bongos",
+    "Waxy Wayfinder",
+    "Pyrotechnic Tote",
+    "Wraith Wrap",
+    "Coffin Kit",
+    "Winter Wonderland Wrap",
+    "Mair Mask",
+    "El Muchacho",
+    "Backpack Broiler",
+    "Burning Bandana",
+    "Soot Suit",
+    "Hive Minder",
+    "Pampered Pyro",
+    "Bone Dome",
+    "Air Raider",
+    "Trickster's Turnout Gear",
+    "Pop-Eyes",
+    "Blizzard Breather",
+    "Trail-Blazer",
+    "Tiny Timber",
+    "Toy Tailor",
+    "Sengoku Scorcher",
+    "Gas Guzzler",
+    "Smoking Skid Lid",
+    "Lunatic's Leathers",
+    "Employee of the Mmmph",
+    "Frymaster",
+    "Combustible Kabuto",
+    "Glengarry Bonnet",
+    "Scotsman's Stove Pipe",
+    "Hustler's Hallmark",
+    "Tippler's Tricorne",
+    "Rimmed Raincatcher",
+    "Sober Stuntman",
+    "Carouser's Capotain",
+    "Scotch Bonnet",
+    "Prince Tavish's Crown",
+    "Samur-Eye",
+    "Reggaelator",
+    "Sultan's Ceremonial",
+    "Conjurer's Cowl",
+    "Tam O' Shanter",
+    "Mask of the Shaman",
+    "Tavish DeGroot Experience",
+    "Buccaneer's Bicorne",
+    "A Whiff of the Old Brimstone",
+    "Aladdin's Private Reserve",
+    "Snapped Pupil",
+    "Liquor Locker",
+    "Bird-Man of Aberdeen",
+    "Bearded Bombardier",
+    "Voodoo JuJu (Slight Return)",
+    "Cool Breeze",
+    "Dark Age Defender",
+    "Glasgow Great Helm",
+    "Black Watch",
+    "Tartan Spartan",
+    "Gaelic Golf Bag",
+    "Whiskey Bib",
+    "Stormin' Norman",
+    "Gaelic Garb",
+    "Hurt Locher",
+    "Pirate Bandana",
+    "Highland High Heels",
+    "Tartan Tyrolean",
+    "Razor Cut",
+    "Frontier Djustice",
+    "Allbrero",
+    "Seeing Double",
+    "Six Pack Abs",
+    "Officer's Ushanka",
+    "Tough Guy's Toque",
+    "Hound Dog",
+    "Heavy Duty Rag",
+    "Pugilist's Protector",
+    "Hard Counter",
+    "Cadaver's Cranium",
+    "Big Chief",
+    "Magnificent Mongolian",
+    "Coupe D'isaster",
+    "Dread Knot",
+    "Large Luchadore",
+    "Capo's Capper",
+    "Copper's Hard Top",
+    "Security Shades",
+    "Big Steel Jaw of Summer Fun",
+    "Pilotka",
+    "Dragonborn Helmet",
+    "Purity Fist",
+    "One-Man Army",
+    "Outdoorsman",
+    "Gym Rat",
+    "Sandvich Safe",
+    "Toss-Proof Towel",
+    "Apparatchik's Apparel",
+    "Soviet Gentleman",
+    "Heavy's Hockey Hair",
+    "Der Maschinensoldaten-Helm",
+    "Die Regime-Panzerung",
+    "Little Bear",
+    "Tyurtlenek",
+    "Red Army Robin",
+    "Heavy-Weight Champ",
+    "Tsarboosh",
+    "Katyusha",
+    "Borscht Belt",
+    "Bear Necessities",
+    "Bolshevik Biker",
+    "Gabe Glasses",
+    "Minnesota Slick",
+    "Mann of the House",
+    "Yuri's Revenge",
+    "Jungle Booty",
+    "Texas Ten Gallon",
+    "Engineer's Cap",
+    "Texas Slim's Dome Shine",
+    "Hotrod",
+    "Safe'n'Sound",
+    "Buckaroo's Hat",
+    "Industrial Festivizer",
+    "Western Wear",
+    "Big Country",
+    "Professor's Peculiarity",
+    "Teddy Roosebelt",
+    "Googly Gazer",
+    "Ol' Geezer",
+    "Hetman's Headpiece",
+    "Prairie Heel Biters",
+    "Pip-Boy",
+    "Wingstick",
+    "Brainiac Hairpiece",
+    "Brainiac Goggles",
+    "Pencil Pusher",
+    "Builder's Blueprints",
+    "Virtual Reality Headset",
+    "Stocking Stuffer",
+    "Texas Half-Pants",
+    "Idea Tube",
+    "Pocket Purrer",
+    "Barnstormer",
+    "Mister Bubbles",
+    "Pocket Pyro",
+    "Trash Toter",
+    "Dry Gulch Gulp",
+    "Pardner's Pompadour",
+    "Flared Frontiersman",
+    "Gold Digger",
+    "Face Full of Festive",
+    "Dogfighter",
+    "Tools of the Trade",
+    "Joe-on-the-Go",
+    "Peacenik's Ponytail",
+    "Level Three Chin",
+    "Egghead's Overalls",
+    "Lonesome Loafers",
+    "Endothermic Exowear",
+    "Danger",
+    "Vintage Tyrolean",
+    "Otolaryngologist's Mirror",
+    "Ze Goggles",
+    "Gentleman's Gatsby",
+    "Berliner's Bucket Helm",
+    "Blighted Beak",
+    "German Gonzila",
+    "Geisha Boy",
+    "Medic's Mountain Cap",
+    "Grimm Hatte",
+    "Doctor's Sack",
+    "Surgeon's Stahlhelm",
+    "Couvre Corner",
+    "Surgeon's Stethoscope",
+    "Nine-Pipe Problem",
+    "Surgeon's Side Satchel",
+    "Gentleman's Ushanka",
+    "Medi-Mask",
+    "Archimedes",
+    "Der Wintermantel",
+    "Doc's Holiday",
+    "Das Hazmattenhatten",
+    "Das Feelinbeterbager",
+    "Das Ubersternmann",
+    "Das Metalmeatencasen",
+    "Das Naggenvatcher",
+    "Das Maddendoktor",
+    "Das Gutenkutteharen",
+    "Baron von Havenaplane",
+    "Das Fantzipantzen",
+    "Medical Mystery",
+    "A Brush with Death",
+    "Slick Cut",
+    "Ward",
+    "Nunhood",
+    "Angel of Death",
+    "Mann of Reason",
+    "Ruffled Ruprecht",
+    "Ze Übermensch",
+    "Medicine Manpurse",
+    "Chronoscarf",
+    "Professional's Panama",
+    "Master's Yellow Belt",
+    "Ritzy Rick's Hair Fixative",
+    "Shooter's Sola Topi",
+    "Bloke's Bucket Hat",
+    "Ol' Snaggletooth",
+    "Larrikin Robin",
+    "Crocleather Slouch",
+    "Villain's Veil",
+    "Desert Marauder",
+    "Anger",
+    "Your Worst Nightmare",
+    "Crocodile Smile",
+    "Swagman's Swatter",
+    "Outback Intellectual",
+    "Fruit Shoot",
+    "Liquidator's Lid",
+    "Koala Compact",
+    "Sir Hootsalot",
+    "Cold Killer",
+    "Criminal Cloak",
+    "Dread Hiding Hood",
+    "Birdman of Australiacatraz",
+    "Cobber Chameleon",
+    "Falconer",
+    "Wet Works",
+    "Chronomancer",
+    "Brim-Full of Bullets",
+    "Li'l Snaggletooth",
+    "Snow Scoper",
+    "Five-Month Shadow",
+    "Golden Garment",
+    "Extra Layer",
+    "Scoper's Smoke",
+    "Triggerman's Tacticals",
+    "Camera Beard",
+    "Backbiter's Billycock",
+    "Magistrate's Mullet",
+    "Frenchman's Beret",
+    "Familiar Fez",
+    "Détective Noir",
+    "Le Party Phantom",
+    "Noh Mercy",
+    "Charmer's Chapeau",
+    "Janissary Ketche",
+    "Cosa Nostra Cap",
+    "Made Man",
+    "Rogue's Col Roule",
+    "Nanobalaclava",
+    "Counterfeit Billycock",
+    "L'Inspecteur",
+    "Spectre's Spectacles",
+    "Sneaky Spats of Sneaking",
+    "Business Casual",
+    "Hat of Cards",
+    "Scarecrow",
+    "Cut Throat Concierge",
+    "Pom-Pommed Provocateur",
+    "Harmburg",
+    "Rogue's Brogues",
+    "Belgian Detective",
+    "Blood Banker",
+    "After Dark",
+    "L'homme Burglerre",
+    "Escapist",
+    "Rogue's Robe",
+    "Aviator Assassin",
+    "Sky Captain",
+    "Au Courant Assassin",
+    "Team Captain",
+    "Private Eye",
+    "Pocket Medic",
+    "Hat With No Name",
+    "Dr. Whoa",
+    "Ornament Armament",
+    "Itsy Bitsy Spyer",
+    "All-Father",
+    "Teufort Tooth Kicker",
+    "HazMat Headcase",
+    "Bonedolier",
+    "Spooky Sleeves",
+    "Exorcizor",
+    "Powdered Practitioner",
+    "Macho Mann",
+    "Viking Braider",
+    "Cuban Bristle Crisis",
+    "Beep Boy",
+    "Special Eyes",
+    "Weight Room Warmer",
+    "Frenchman's Formals",
+    "Sub Zero Suit",
+    "Toy Soldier",
+    "Towering Pillar of Hats",
+    "Noble Amassment of Hats",
+    "Modest Pile of Hat",
+    "Dr's Dapper Topper",
+    "Horrific Headsplitter",
+    "A Rather Festive Tree",
+    "Deus Specs",
+    "Company Man",
+    "Killer Exclusive",
+    "Salty Dog",
+    "Hot Dogger",
+    "Flair!",
+    "Clan Pride",
+    "Brown Bomber",
+    "Balloonicorn",
+    "Rump-o'-Lantern",
+    "Crone's Dome",
+    "Executioner",
+    "Tuxxy",
+    "Tough Stuff Muffs",
+    "Merc's Muffler",
+    "Antlers",
+    "Baronial Badge",
+    "Brotherhood of Arms",
+    "Well-Rounded Rifleman",
+    "Breakneck Baggies",
+    "Graybanns",
+    "Federal Casemaker",
+    "Virtual Viewfinder",
+    "Cotton Head",
+    "Hong Kong Cone",
+    "Dictator",
+    "Neckwear Headwear",
+    "Dead of Night",
+    "Kiss King",
+    "Polar Pullover",
+    "Bruiser's Bandanna",
+    "Merc's Mohawk",
+    "Eye-Catcher",
+    "Vive La France",
+    "Tipped Lid",
+    "Crown of the Old Kingdom",
+    "Tomb Readers"
+];
