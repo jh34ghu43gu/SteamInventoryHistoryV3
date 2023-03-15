@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.6
+// @version      0.6.1
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -599,133 +599,135 @@ function IHD_mvm_stats_report() {
         }
     };
     //Missions and tours
-    for (const [key, value] of Object.entries(IHD_events_type_sorted["6"])) {
-        if (IHD_items_gained_attr in value) {
-            for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
-                //Tally all the items into IHD_mvm_obj
-                if ("name" in value2) {
-                    var name = IHD_inverted_dictionary[value2["name"]];
-                    if (name.includes("Golden Frying Pan") || name.includes("Australium")) {
-                        if (name in IHD_mvm_obj["aussies"]) {
-                            IHD_mvm_obj["aussies"][name]++;
-                        } else {
-                            IHD_mvm_obj["aussies"][name] = 1;
-                        }
-                    } else if (name.includes("Professional")) {
-                        if (name in IHD_mvm_obj["prof"]) {
-                            IHD_mvm_obj["prof"][name]++;
-                        } else {
-                            IHD_mvm_obj["prof"][name] = 1;
-                        }
-                    } else if (name.includes("Specialized")) {
-                        if (name in IHD_mvm_obj["spec"]) {
-                            IHD_mvm_obj["spec"][name]++;
-                        } else {
-                            IHD_mvm_obj["spec"][name] = 1;
-                        }
-                    } else if (name.includes("Killstreak")) {
-                        if (name in IHD_mvm_obj["kits"]) {
-                            IHD_mvm_obj["kits"][name]++;
-                        } else {
-                            IHD_mvm_obj["kits"][name] = 1;
-                        }
-                    } else if (IHD_mvm_parts_list.includes(name)) {
-                        if (name in IHD_mvm_obj["parts"]) {
-                            IHD_mvm_obj["parts"][name]++;
-                        } else {
-                            IHD_mvm_obj["parts"][name] = 1;
-                        }
-                    } else if (IHD_mvm_badge_list.includes(name)) {
-                        if (name in IHD_mvm_obj["badges"]) {
-                            IHD_mvm_obj["badges"][name]++;
-                        } else {
-                            IHD_mvm_obj["badges"][name] = 1;
-                        }
-                    } else if (name.includes("Botkiller")) {
-                        if (name.includes("Carbonado")) {
-                            if (name in IHD_mvm_obj["botkillers"]["gg"]["carbonado"]) {
-                                IHD_mvm_obj["botkillers"]["gg"]["carbonado"][name]++;
+    if ("6" in IHD_events_type_sorted) {
+        for (const [key, value] of Object.entries(IHD_events_type_sorted["6"])) {
+            if (IHD_items_gained_attr in value) {
+                for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
+                    //Tally all the items into IHD_mvm_obj
+                    if ("name" in value2) {
+                        var name = IHD_inverted_dictionary[value2["name"]];
+                        if (name.includes("Golden Frying Pan") || name.includes("Australium")) {
+                            if (name in IHD_mvm_obj["aussies"]) {
+                                IHD_mvm_obj["aussies"][name]++;
                             } else {
-                                IHD_mvm_obj["botkillers"]["gg"]["carbonado"][name] = 1;
+                                IHD_mvm_obj["aussies"][name] = 1;
                             }
-                        } else if (name.includes("Diamond")) {
-                            if (name in IHD_mvm_obj["botkillers"]["gg"]["diamond"]) {
-                                IHD_mvm_obj["botkillers"]["gg"]["diamond"][name]++;
+                        } else if (name.includes("Professional")) {
+                            if (name in IHD_mvm_obj["prof"]) {
+                                IHD_mvm_obj["prof"][name]++;
                             } else {
-                                IHD_mvm_obj["botkillers"]["gg"]["diamond"][name] = 1;
+                                IHD_mvm_obj["prof"][name] = 1;
                             }
-                        } else if (name.includes("Rust")) {
-                            if (name in IHD_mvm_obj["botkillers"]["os"]["rust"]) {
-                                IHD_mvm_obj["botkillers"]["os"]["rust"][name]++;
+                        } else if (name.includes("Specialized")) {
+                            if (name in IHD_mvm_obj["spec"]) {
+                                IHD_mvm_obj["spec"][name]++;
                             } else {
-                                IHD_mvm_obj["botkillers"]["os"]["rust"][name] = 1;
+                                IHD_mvm_obj["spec"][name] = 1;
                             }
-                        } else if (name.includes("Blood")) {
-                            if (name in IHD_mvm_obj["botkillers"]["os"]["blood"]) {
-                                IHD_mvm_obj["botkillers"]["os"]["blood"][name]++;
+                        } else if (name.includes("Killstreak")) {
+                            if (name in IHD_mvm_obj["kits"]) {
+                                IHD_mvm_obj["kits"][name]++;
                             } else {
-                                IHD_mvm_obj["botkillers"]["os"]["blood"][name] = 1;
+                                IHD_mvm_obj["kits"][name] = 1;
                             }
-                        } else if (name.includes("Silver") && name.includes("Mk.II")) {
-                            if (name in IHD_mvm_obj["botkillers"]["me"]["silver"]) {
-                                IHD_mvm_obj["botkillers"]["me"]["silver"][name]++;
+                        } else if (IHD_mvm_parts_list.includes(name)) {
+                            if (name in IHD_mvm_obj["parts"]) {
+                                IHD_mvm_obj["parts"][name]++;
                             } else {
-                                IHD_mvm_obj["botkillers"]["me"]["silver"][name] = 1;
+                                IHD_mvm_obj["parts"][name] = 1;
                             }
-                        } else if (name.includes("Gold") && name.includes("Mk.II")) {
-                            if (name in IHD_mvm_obj["botkillers"]["me"]["gold"]) {
-                                IHD_mvm_obj["botkillers"]["me"]["gold"][name]++;
+                        } else if (IHD_mvm_badge_list.includes(name)) {
+                            if (name in IHD_mvm_obj["badges"]) {
+                                IHD_mvm_obj["badges"][name]++;
                             } else {
-                                IHD_mvm_obj["botkillers"]["me"]["gold"][name] = 1;
+                                IHD_mvm_obj["badges"][name] = 1;
                             }
-                        } else if (name.includes("Silver")) {
-                            if (name in IHD_mvm_obj["botkillers"]["st"]["silver"]) {
-                                IHD_mvm_obj["botkillers"]["st"]["silver"][name]++;
+                        } else if (name.includes("Botkiller")) {
+                            if (name.includes("Carbonado")) {
+                                if (name in IHD_mvm_obj["botkillers"]["gg"]["carbonado"]) {
+                                    IHD_mvm_obj["botkillers"]["gg"]["carbonado"][name]++;
+                                } else {
+                                    IHD_mvm_obj["botkillers"]["gg"]["carbonado"][name] = 1;
+                                }
+                            } else if (name.includes("Diamond")) {
+                                if (name in IHD_mvm_obj["botkillers"]["gg"]["diamond"]) {
+                                    IHD_mvm_obj["botkillers"]["gg"]["diamond"][name]++;
+                                } else {
+                                    IHD_mvm_obj["botkillers"]["gg"]["diamond"][name] = 1;
+                                }
+                            } else if (name.includes("Rust")) {
+                                if (name in IHD_mvm_obj["botkillers"]["os"]["rust"]) {
+                                    IHD_mvm_obj["botkillers"]["os"]["rust"][name]++;
+                                } else {
+                                    IHD_mvm_obj["botkillers"]["os"]["rust"][name] = 1;
+                                }
+                            } else if (name.includes("Blood")) {
+                                if (name in IHD_mvm_obj["botkillers"]["os"]["blood"]) {
+                                    IHD_mvm_obj["botkillers"]["os"]["blood"][name]++;
+                                } else {
+                                    IHD_mvm_obj["botkillers"]["os"]["blood"][name] = 1;
+                                }
+                            } else if (name.includes("Silver") && name.includes("Mk.II")) {
+                                if (name in IHD_mvm_obj["botkillers"]["me"]["silver"]) {
+                                    IHD_mvm_obj["botkillers"]["me"]["silver"][name]++;
+                                } else {
+                                    IHD_mvm_obj["botkillers"]["me"]["silver"][name] = 1;
+                                }
+                            } else if (name.includes("Gold") && name.includes("Mk.II")) {
+                                if (name in IHD_mvm_obj["botkillers"]["me"]["gold"]) {
+                                    IHD_mvm_obj["botkillers"]["me"]["gold"][name]++;
+                                } else {
+                                    IHD_mvm_obj["botkillers"]["me"]["gold"][name] = 1;
+                                }
+                            } else if (name.includes("Silver")) {
+                                if (name in IHD_mvm_obj["botkillers"]["st"]["silver"]) {
+                                    IHD_mvm_obj["botkillers"]["st"]["silver"][name]++;
+                                } else {
+                                    IHD_mvm_obj["botkillers"]["st"]["silver"][name] = 1;
+                                }
+                            } else if (name.includes("Gold")) {
+                                if (name in IHD_mvm_obj["botkillers"]["st"]["gold"]) {
+                                    IHD_mvm_obj["botkillers"]["st"]["gold"][name]++;
+                                } else {
+                                    IHD_mvm_obj["botkillers"]["st"]["gold"][name] = 1;
+                                }
+                            }
+                        } else if (IHD_weapon_list.includes(name) || IHD_weapon_list.includes(name.replace("The ", ""))) {
+                            if (name in IHD_mvm_obj["weapons"]) {
+                                IHD_mvm_obj["weapons"][name]++;
                             } else {
-                                IHD_mvm_obj["botkillers"]["st"]["silver"][name] = 1;
+                                IHD_mvm_obj["weapons"][name] = 1;
                             }
-                        } else if (name.includes("Gold")) {
-                            if (name in IHD_mvm_obj["botkillers"]["st"]["gold"]) {
-                                IHD_mvm_obj["botkillers"]["st"]["gold"][name]++;
+                        } else if (IHD_tool_list.includes(name)) {
+                            if (name in IHD_mvm_obj["tools"]) {
+                                IHD_mvm_obj["tools"][name]++;
                             } else {
-                                IHD_mvm_obj["botkillers"]["st"]["gold"][name] = 1;
+                                IHD_mvm_obj["tools"][name] = 1;
                             }
-                        }
-                    } else if (IHD_weapon_list.includes(name) || IHD_weapon_list.includes(name.replace("The ", ""))) {
-                        if (name in IHD_mvm_obj["weapons"]) {
-                            IHD_mvm_obj["weapons"][name]++;
+                        } else if (IHD_paint_list.includes(name)) {
+                            if (name in IHD_mvm_obj["tools"]["paint"]) {
+                                IHD_mvm_obj["tools"]["paint"][name]++;
+                            } else {
+                                IHD_mvm_obj["tools"]["paint"][name] = 1;
+                            }
+                        } else if (IHD_mvm_robo_hat_list.includes(name) || IHD_mvm_robo_hat_list.includes(name.replace("The ", ""))) {
+                            if (name in IHD_mvm_obj["hats"]["robo"]) {
+                                IHD_mvm_obj["hats"]["robo"][name]++;
+                            } else {
+                                IHD_mvm_obj["hats"]["robo"][name] = 1;
+                            }
+                        } else if (IHD_hat_list.includes(name) || IHD_hat_list.includes(name.replace("The ", ""))) {
+                            if (name in IHD_mvm_obj["hats"]["hat"]) {
+                                IHD_mvm_obj["hats"]["hat"][name]++;
+                            } else {
+                                IHD_mvm_obj["hats"]["hat"][name] = 1;
+                            }
                         } else {
-                            IHD_mvm_obj["weapons"][name] = 1;
-                        }
-                    } else if (IHD_tool_list.includes(name)) {
-                        if (name in IHD_mvm_obj["tools"]) {
-                            IHD_mvm_obj["tools"][name]++;
-                        } else {
-                            IHD_mvm_obj["tools"][name] = 1;
-                        }
-                    } else if (IHD_paint_list.includes(name)) {
-                        if (name in IHD_mvm_obj["tools"]["paint"]) {
-                            IHD_mvm_obj["tools"]["paint"][name]++;
-                        } else {
-                            IHD_mvm_obj["tools"]["paint"][name] = 1;
-                        }
-                    } else if (IHD_mvm_robo_hat_list.includes(name) || IHD_mvm_robo_hat_list.includes(name.replace("The ", ""))) {
-                        if (name in IHD_mvm_obj["hats"]["robo"]) {
-                            IHD_mvm_obj["hats"]["robo"][name]++;
-                        } else {
-                            IHD_mvm_obj["hats"]["robo"][name] = 1;
-                        }
-                    } else if (IHD_hat_list.includes(name) || IHD_hat_list.includes(name.replace("The ", ""))) {
-                        if (name in IHD_mvm_obj["hats"]["hat"]) {
-                            IHD_mvm_obj["hats"]["hat"][name]++;
-                        } else {
-                            IHD_mvm_obj["hats"]["hat"][name] = 1;
-                        }
-                    } else {
-                        if (name in IHD_mvm_obj) {
-                            IHD_mvm_obj[name]++;
-                        } else {
-                            IHD_mvm_obj[name] = 1;
+                            if (name in IHD_mvm_obj) {
+                                IHD_mvm_obj[name]++;
+                            } else {
+                                IHD_mvm_obj[name] = 1;
+                            }
                         }
                     }
                 }
@@ -733,47 +735,49 @@ function IHD_mvm_stats_report() {
         }
     }
     //Surplus
-    for (const [key, value] of Object.entries(IHD_events_type_sorted["7"])) {
-        if (IHD_items_gained_attr in value) {
-            for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
-                //Tally all the items into IHD_surplus_obj
-                if ("name" in value2) {
-                    name = IHD_inverted_dictionary[value2["name"]];
-                    if (IHD_weapon_list.includes(name) || IHD_weapon_list.includes(name.replace("The ", ""))) {
-                        if (name in IHD_surplus_obj["weapons"]) {
-                            IHD_surplus_obj["weapons"][name]++;
+    if ("7" in IHD_events_type_sorted) {
+        for (const [key, value] of Object.entries(IHD_events_type_sorted["7"])) {
+            if (IHD_items_gained_attr in value) {
+                for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
+                    //Tally all the items into IHD_surplus_obj
+                    if ("name" in value2) {
+                        name = IHD_inverted_dictionary[value2["name"]];
+                        if (IHD_weapon_list.includes(name) || IHD_weapon_list.includes(name.replace("The ", ""))) {
+                            if (name in IHD_surplus_obj["weapons"]) {
+                                IHD_surplus_obj["weapons"][name]++;
+                            } else {
+                                IHD_surplus_obj["weapons"][name] = 1;
+                            }
+                        } else if (IHD_tool_list.includes(name)) {
+                            if (name in IHD_surplus_obj["tools"]) {
+                                IHD_surplus_obj["tools"][name]++;
+                            } else {
+                                IHD_surplus_obj["tools"][name] = 1;
+                            }
+                        } else if (IHD_paint_list.includes(name)) {
+                            if (name in IHD_surplus_obj["tools"]["paint"]) {
+                                IHD_surplus_obj["tools"]["paint"][name]++;
+                            } else {
+                                IHD_surplus_obj["tools"]["paint"][name] = 1;
+                            }
+                        } else if (IHD_mvm_robo_hat_list.includes(name) || IHD_mvm_robo_hat_list.includes(name.replace("The ", ""))) {
+                            if (name in IHD_surplus_obj["hats"]["robo"]) {
+                                IHD_surplus_obj["hats"]["robo"][name]++;
+                            } else {
+                                IHD_surplus_obj["hats"]["robo"][name] = 1;
+                            }
+                        } else if (IHD_hat_list.includes(name) || IHD_hat_list.includes(name.replace("The ", ""))) {
+                            if (name in IHD_surplus_obj["hats"]["hat"]) {
+                                IHD_surplus_obj["hats"]["hat"][name]++;
+                            } else {
+                                IHD_surplus_obj["hats"]["hat"][name] = 1;
+                            }
                         } else {
-                            IHD_surplus_obj["weapons"][name] = 1;
-                        }
-                    } else if (IHD_tool_list.includes(name)) {
-                        if (name in IHD_surplus_obj["tools"]) {
-                            IHD_surplus_obj["tools"][name]++;
-                        } else {
-                            IHD_surplus_obj["tools"][name] = 1;
-                        }
-                    } else if (IHD_paint_list.includes(name)) {
-                        if (name in IHD_surplus_obj["tools"]["paint"]) {
-                            IHD_surplus_obj["tools"]["paint"][name]++;
-                        } else {
-                            IHD_surplus_obj["tools"]["paint"][name] = 1;
-                        }
-                    } else if (IHD_mvm_robo_hat_list.includes(name) || IHD_mvm_robo_hat_list.includes(name.replace("The ", ""))) {
-                        if (name in IHD_surplus_obj["hats"]["robo"]) {
-                            IHD_surplus_obj["hats"]["robo"][name]++;
-                        } else {
-                            IHD_surplus_obj["hats"]["robo"][name] = 1;
-                        }
-                    } else if (IHD_hat_list.includes(name) || IHD_hat_list.includes(name.replace("The ", ""))) {
-                        if (name in IHD_surplus_obj["hats"]["hat"]) {
-                            IHD_surplus_obj["hats"]["hat"][name]++;
-                        } else {
-                            IHD_surplus_obj["hats"]["hat"][name] = 1;
-                        }
-                    } else {
-                        if (name in IHD_surplus_obj) {
-                            IHD_surplus_obj[name]++;
-                        } else {
-                            IHD_surplus_obj[name] = 1;
+                            if (name in IHD_surplus_obj) {
+                                IHD_surplus_obj[name]++;
+                            } else {
+                                IHD_surplus_obj[name] = 1;
+                            }
                         }
                     }
                 }
