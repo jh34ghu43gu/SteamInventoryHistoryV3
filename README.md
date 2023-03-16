@@ -27,6 +27,9 @@
  ### 0.6.1
  * Fixed a bug with reading files that didn't have events.
 
+ ### 0.6.2
+ * CSS for stats provided by Viyzen
+
  ## 0.5
  * Previous downloads can be read into the script before starting a download.
    * Incompatable with any downloads prior to version 0.4.6.

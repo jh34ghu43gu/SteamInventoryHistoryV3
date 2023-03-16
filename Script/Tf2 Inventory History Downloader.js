@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.6.1
+// @version      0.6.2
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -232,6 +232,10 @@ const IHD_wear_map = {
 waitForKeyElements(".inventory_history_pagingrow", IHD_addButtons);
 
 function IHD_addButtons(jNode) {
+    var style = document.createElement("style");
+    style.type = 'text/css';
+    //VIYZEN HELPING CSS :)))))
+    style.innerHTML = "div#IHD_stats_div { display: inline-block; color: #ddd; } div#IHD_stats_div .visible { visibility: visible;     opacity: 1;     height: fit-content;     transition: opacity 0.3s linear;     background-color: rgba(0, 0, 0, 0.3);     margin: 7px 10px 7px 10px;     padding: 7px 0px;      }  div#IHD_stats_div .visible > div {     margin: 7px 10px 7px 10px;     padding: 7px 0px; }  div#IHD_stats_div .hidden {     visibility: hidden;     opacity: 0;     height: 0; }  div#IHD_stats_div button{     min-height: 15px;     padding: 2px 4px;     background-color: #68932f;     border: 2px solid #68932f;     border-radius: 2px;     color: #d2ff96;     font-size: 14px;      margin-left: 10px; }";
     var IHD_download_button = document.createElement("button");
     IHD_download_button.id = "IHD_download_button";
     IHD_download_button.innerText = "Download as json";
@@ -296,6 +300,7 @@ function IHD_addButtons(jNode) {
     IHD_filter_original_ids_label.for = "IHD_filter_original_ids";
     IHD_filter_original_ids_label.innerText = "Only original ids";
     //Add everything
+    jNode[0].appendChild(style);
     jNode[0].appendChild(document.createElement("br"));
     jNode[0].appendChild(IHD_download_button);
     jNode[0].appendChild(IHD_cursor_input);
@@ -481,6 +486,21 @@ function IHD_file_items_handler(items, dictionary) {
  */
 var IHD_events_type_sorted = {};
 var IHD_inverted_dictionary = {};
+
+function hideAllChildDivs(myDiv) {
+    // Get all child div elements of myDiv
+    const childDivs = myDiv.querySelectorAll(".hidden,.visible");
+
+    // Loop through each child div element
+    for (let i = 0; i < childDivs.length; i++) {
+        // Set the class of the child div element to "hidden"
+        childDivs[i].className = "hidden";
+
+        // Recursively hide all child div elements of the child div element
+        hideAllChildDivs(childDivs[i]);
+    }
+}
+
 function IHD_stats_report() {
     var IHD_stats_div = document.createElement("div");
     IHD_stats_div.id = "IHD_stats_div";
@@ -508,15 +528,18 @@ function IHD_stats_report() {
     }
     IHD_mvm_stats_report();
 
+
+
     var IHD_collapsibles = document.getElementsByClassName("collapsible");
     for (var i = 0; i < IHD_collapsibles.length; i++) {
         IHD_collapsibles[i].addEventListener("click", function () {
             this.classList.toggle("active");
             const content = this.nextElementSibling;
-            if (content.style.display === "block") {
-                content.style.display = "none";
+            if (content.className.match(/(?:^|\s)visible(?!\S)/)) {
+                content.className = "hidden";
+                hideAllChildDivs(content);
             } else {
-                content.style.display = "block";
+                content.className = "visible";
             }
         });
     }
@@ -785,8 +808,8 @@ function IHD_mvm_stats_report() {
         }
     }
 
-    document.getElementById("IHD_stats_div").innerHTML += "<br><div><h2>MvM Loot</h2></div>" + IHD_stats_obj_to_html(IHD_mvm_obj)[0] + "<br>";
-    document.getElementById("IHD_stats_div").innerHTML += "<br><div><h2>Surplus Loot</h2></div>" + IHD_stats_obj_to_html(IHD_surplus_obj)[0] + "<br>";
+    document.getElementById("IHD_stats_div").innerHTML += "<br><div class=\"mvm\"><h2>MvM Loot</h2></div>" + IHD_stats_obj_to_html(IHD_mvm_obj)[0] + "<br>";
+    document.getElementById("IHD_stats_div").innerHTML += "<br><div class=\"surplus\"><h2>Surplus Loot</h2></div>" + IHD_stats_obj_to_html(IHD_surplus_obj)[0] + "<br>";
 }
 
 function IHD_stats_obj_to_html(obj) {
@@ -799,7 +822,7 @@ function IHD_stats_obj_to_html(obj) {
         } else if (typeof value === "object") {
             const [childHtml, childTotal] = IHD_stats_obj_to_html(value);
             html += "<br><button class=\"collapsible\">" + key + "(" + childTotal + ")" + "</button>";
-            html += "<div class=\"content\" style=\"display: none;\">" + childHtml + "</div>";
+            html += "<div class=\"hidden\">" + childHtml + "</div>";
             total += childTotal;
         } else {
             console.warn("Unexpected data type when converting stats to html: " + typeof value);
