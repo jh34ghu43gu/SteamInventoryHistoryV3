@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.6.2
+// @version      0.6.3
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -527,6 +527,7 @@ function IHD_stats_report() {
         //IHD_stats_counter++;
     }
     IHD_mvm_stats_report();
+    IHD_unbox_stats_report();
 
 
 
@@ -812,18 +813,285 @@ function IHD_mvm_stats_report() {
     document.getElementById("IHD_stats_div").innerHTML += "<br><div class=\"surplus\"><h2>Surplus Loot</h2></div>" + IHD_stats_obj_to_html(IHD_surplus_obj)[0] + "<br>";
 }
 
+function IHD_unbox_stats_report() {
+    var IHD_unbox_obj = {
+        "All Unusuals": {},
+        "cases": {
+            "Total Uniques": 0,
+            "Total Decorated Skins": 0,
+            "Total Stranges": 0,
+            "Total Unusuals": {},
+            "Total Bonus Items": {
+                "Paint": {},
+                "Strange Parts": {},
+                "Tools": {},
+                "Unusualifiers": {}
+                //Tickets, stat transfer tools
+            },
+            "cosmetic": {
+                "Uniques": 0,
+                "Stranges": 0,
+                "Unusuals": {},
+                "Bonus Items": {
+                    "Paint": {},
+                    "Strange Parts": {},
+                    "Tools": {},
+                    "Unusualifiers": {}
+                    //Tickets, stat transfer tools
+                }
+            },
+            "war paints": {
+                "Decorated Skins": 0,
+                "Uniques": 0,
+                "Stranges": 0,
+                "Unusuals": {},
+                "Bonus Items": {
+                    "Paint": {},
+                    "Strange Parts": {},
+                    "Tools": {},
+                    "Unusualifiers": {}
+                    //Tickets, stat transfer tools
+                }
+            },
+            "weapon skins": { //Different from war paints
+                "Decorated Skins": 0,
+                "Uniques": 0,
+                "Stranges": 0,
+                "Unusuals": {},
+                "Bonus Items": {
+                    "Paint": {},
+                    "Strange Parts": {},
+                    "Tools": {},
+                    "Unusualifiers": {}
+                    //Tickets, stat transfer tools
+                }
+            }
+        },
+        "crates": {
+            "Total Unusuals": {}
+        },
+        "Errors": {}
+    };
+    var i = 0;
+    if ("8" in IHD_events_type_sorted) {
+        for (const [key, value] of Object.entries(IHD_events_type_sorted["8"])) {
+            if (IHD_items_lost_attr in value) {
+                var crate_type = IHD_get_crate_name(value[IHD_items_lost_attr]);
+                if (crate_type.length > 1) {
+                    //Set crate name in appropriate object
+                    if (crate_type.length > 2) { //case
+                        if (!(crate_type[2] in IHD_unbox_obj["cases"][crate_type[1]])) {
+                            IHD_unbox_obj["cases"][crate_type[1]][crate_type[2]] = {};
+                        }
+                    } else { //crate
+                        if (!(crate_type[1] in IHD_unbox_obj["crates"])) {
+                            IHD_unbox_obj["crates"][crate_type[1]] = {};
+                        }
+                    }
+                    //Add items; incriment counters
+                    if (IHD_items_gained_attr in value) {
+                        for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
+                            if ("name" in value2) {
+                                var name = IHD_inverted_dictionary[value2["name"]];
+                                if ("Effect" in value2) {
+                                    name = "★ " + value2["Effect"] + " ★ " + name;
+                                }
+                                var bonus = true;
+                                //Add the names
+                                if (crate_type.length > 2) {
+                                    //Bonus items
+                                    if (IHD_paint_list.includes(name)) { //Paint
+                                        if (name in IHD_unbox_obj["cases"]["Total Bonus Items"]["Paint"]) {
+                                            IHD_unbox_obj["cases"]["Total Bonus Items"]["Paint"][name]++;
+                                        } else {
+                                            IHD_unbox_obj["cases"]["Total Bonus Items"]["Paint"][name] = 1;
+                                        }
+                                        if (name in IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"]["Paint"]) {
+                                            IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"]["Paint"][name]++;
+                                        } else {
+                                            IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"]["Paint"][name] = 1;
+                                        }
+                                    } else if (IHD_tool_list.includes(name)) { //Tools
+                                        if (name in IHD_unbox_obj["cases"]["Total Bonus Items"]["Tools"]) {
+                                            IHD_unbox_obj["cases"]["Total Bonus Items"]["Tools"][name]++;
+                                        } else {
+                                            IHD_unbox_obj["cases"]["Total Bonus Items"]["Tools"][name] = 1;
+                                        }
+                                        if (name in IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"]["Tools"]) {
+                                            IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"]["Tools"][name]++;
+                                        } else {
+                                            IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"]["Tools"][name] = 1;
+                                        }
+                                    } else if (name.includes("Strange Part: ")) { //Strange parts
+                                        if (name in IHD_unbox_obj["cases"]["Total Bonus Items"]["Strange Parts"]) {
+                                            IHD_unbox_obj["cases"]["Total Bonus Items"]["Strange Parts"][name]++;
+                                        } else {
+                                            IHD_unbox_obj["cases"]["Total Bonus Items"]["Strange Parts"][name] = 1;
+                                        }
+                                        if (name in IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"]["Strange Parts"]) {
+                                            IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"]["Strange Parts"][name]++;
+                                        } else {
+                                            IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"]["Strange Parts"][name] = 1;
+                                        }
+                                    } else if (name.includes("Unusualifier")) { //Unusualifiers
+                                        if (name in IHD_unbox_obj["cases"]["Total Bonus Items"]["Unusualifiers"]) {
+                                            IHD_unbox_obj["cases"]["Total Bonus Items"]["Unusualifiers"][name]++;
+                                        } else {
+                                            IHD_unbox_obj["cases"]["Total Bonus Items"]["Unusualifiers"][name] = 1;
+                                        }
+                                        if (name in IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"]["Unusualifiers"]) {
+                                            IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"]["Unusualifiers"][name]++;
+                                        } else {
+                                            IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"]["Unusualifiers"][name] = 1;
+                                        }
+                                    } else if (name === "Tour of Duty Ticket" || name === "Strange Count Transfer Tool") { //ToD and stat transfer
+                                        if (name in IHD_unbox_obj["cases"]["Total Bonus Items"]) {
+                                            IHD_unbox_obj["cases"]["Total Bonus Items"][name]++;
+                                        } else {
+                                            IHD_unbox_obj["cases"]["Total Bonus Items"][name] = 1;
+                                        }
+                                        if (name in IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"]) {
+                                            IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"][name]++;
+                                        } else {
+                                            IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"][name] = 1;
+                                        }
+                                    }
+                                    //Not a bonus item
+                                    else if (name in IHD_unbox_obj["cases"][crate_type[1]][crate_type[2]]) {
+                                        IHD_unbox_obj["cases"][crate_type[1]][crate_type[2]][name]++;
+                                        bonus = false;
+                                    } else {
+                                        IHD_unbox_obj["cases"][crate_type[1]][crate_type[2]][name] = 1;
+                                        bonus = false;
+                                    }
+                                } else {
+                                    if (name in IHD_unbox_obj["crates"][crate_type[1]]) {
+                                        IHD_unbox_obj["crates"][crate_type[1]][name]++;
+                                    } else {
+                                        IHD_unbox_obj["crates"][crate_type[1]][name] = 1;
+                                    }
+                                }
+                                //Increment qualities
+                                if ("Quality" in value2) {
+                                    var quality = value2["Quality"];
+                                    if (crate_type.length > 2) {
+                                        if (quality === "6" && !bonus) {
+                                            IHD_unbox_obj["cases"]["Total Uniques"]++;
+                                            IHD_unbox_obj["cases"][crate_type[1]]["Uniques"]++;
+                                        } else if (quality === "15") {
+                                            IHD_unbox_obj["cases"]["Total Decorated Skins"]++;
+                                            IHD_unbox_obj["cases"][crate_type[1]]["Decorated Skins"]++;
+                                        } else if (quality === "11") {
+                                            IHD_unbox_obj["cases"]["Total Stranges"]++;
+                                            IHD_unbox_obj["cases"][crate_type[1]]["Stranges"]++;
+                                        } else if (quality === "5" && !name.includes("Unusualifier")) { //Unusualifiers ARE NOT unusuals
+                                            if (name in IHD_unbox_obj["cases"]["Total Unusuals"]) {
+                                                IHD_unbox_obj["cases"]["Total Unusuals"][name]++;
+                                            } else {
+                                                IHD_unbox_obj["cases"]["Total Unusuals"][name] = 1;
+                                            }
+                                            if (name in IHD_unbox_obj["cases"][crate_type[1]]["Unusuals"]) {
+                                                IHD_unbox_obj["cases"][crate_type[1]]["Unusuals"][name]++;
+                                            } else {
+                                                IHD_unbox_obj["cases"][crate_type[1]]["Unusuals"][name] = 1;
+                                            }
+                                            if (name in IHD_unbox_obj["All Unusuals"]) {
+                                                IHD_unbox_obj["All Unusuals"][name]++;
+                                            } else {
+                                                IHD_unbox_obj["All Unusuals"][name] = 1;
+                                            }
+                                        }
+                                    } else {
+                                        if (quality === "5" && !name.includes("Unusualifier")) { //Unusualifiers ARE NOT unusuals
+                                            if (name in IHD_unbox_obj["crates"]["Total Unusuals"]) {
+                                                IHD_unbox_obj["crates"]["Total Unusuals"][name]++;
+                                            } else {
+                                                IHD_unbox_obj["crates"]["Total Unusuals"][name] = 1;
+                                            }
+                                            if (name in IHD_unbox_obj["All Unusuals"]) {
+                                                IHD_unbox_obj["All Unusuals"][name]++;
+                                            } else {
+                                                IHD_unbox_obj["All Unusuals"][name] = 1;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    if (IHD_items_gained_attr in value) {
+                        IHD_unbox_obj["Errors"][i] = {};
+                        IHD_unbox_obj["Errors"][i][IHD_items_lost_attr] = value[IHD_items_lost_attr];
+                        IHD_unbox_obj["Errors"][i][IHD_items_gained_attr] = value[IHD_items_gained_attr];
+                        i++;
+                    }
+                }
+            }
+        }
+    }
+
+    document.getElementById("IHD_stats_div").innerHTML += "<br><div class=\"mvm\"><h2>Unboxes</h2></div>" + IHD_stats_obj_to_html(IHD_unbox_obj)[0] + "<br>";
+
+}
+
+
+//Return an array with name data for a case/crate unbox
+//Example data for case ["case", case_type, name]
+//Example data for crate ["crate", name]
+function IHD_get_crate_name(lost_items) {
+    for (const [key, value] of Object.entries(lost_items)) {
+        if ("name" in value) {
+            var name = IHD_inverted_dictionary[value["name"]];
+            if (name.includes("Weapons Case")) {
+                return ["case", "weapon skins", name.substr(0, name.indexOf("Weapons Case")).trim()];
+            } else if (name.includes("War Paint Case")) {
+                return ["case", "war paints", name.substr(0, name.indexOf("War Paint Case")).trim()];
+            } else if ((name.includes("War Paint") && name.includes("Keyless Case"))) {
+                return ["case", "war paints", name.substr(0, name.indexOf("Keyless Case")).trim()];
+            } else if (name.includes("Cosmetic Case")) {
+                return ["case", "cosmetic", name.substr(0, name.indexOf("Cosmetic Case")).trim()];
+            } else if (name.includes("Case") && !name.includes("Key")) { //Praying they don't put "Key" in the name of a future cosmetic case
+                return ["case", "cosmetic", name.substr(0, name.indexOf("Case")).trim()];
+            } else if (!name.includes("Key") && (name.includes("Supply Munition") || name.includes("Crate")
+                || name.includes("Strongbox") || name.includes("Cooler") || name.includes("Reel"))) {
+                return ["crate", name];
+            }
+        }
+    }
+    console.log("Couldn't determine crate/case type for " + lost_items);
+    return ["Invalid"];
+}
+
+//IHD_stats_obj_to_html() will ignore keys here when doing totals (to prevent duplicates)
+var IHD_ignore_key_totals = {
+    "Stranges": 1,
+    "Uniques": 1,
+    "Unusuals": 1,
+    "Decorated Skins": 1,
+    "Bonus Items": 1,
+    "Total Stranges": 1,
+    "Total Uniques": 1,
+    "Total Unusuals": 1,
+    "Total Decorated Skins": 1,
+    "Total Bonus Items": 1
+}
 function IHD_stats_obj_to_html(obj) {
     var html = "";
     var total = 0;
     for (const [key, value] of Object.entries(obj)) {
         if (typeof value === "number") {
             html += "<div>" + key + ": " + value + "</div>";
-            total += value;
+            if (!(key in IHD_ignore_key_totals)) {
+                total += value;
+            }
         } else if (typeof value === "object") {
             const [childHtml, childTotal] = IHD_stats_obj_to_html(value);
             html += "<br><button class=\"collapsible\">" + key + "(" + childTotal + ")" + "</button>";
             html += "<div class=\"hidden\">" + childHtml + "</div>";
-            total += childTotal;
+            if (!(key in IHD_ignore_key_totals)) {
+                total += childTotal;
+            }
         } else {
             console.warn("Unexpected data type when converting stats to html: " + typeof value);
         }

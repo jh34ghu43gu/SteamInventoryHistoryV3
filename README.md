@@ -30,6 +30,9 @@
  ### 0.6.2
  * CSS for stats provided by Viyzen
 
+ ### 0.6.3
+ * Stats for unbox events
+
  ## 0.5
  * Previous downloads can be read into the script before starting a download.
    * Incompatable with any downloads prior to version 0.4.6.
