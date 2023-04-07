@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.6.3
+// @version      0.6.4
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -17,6 +17,7 @@ console.log("Tf2 Inventory History Downloader Script is active.");
 var IHD_json_object = {};
 var IHD_file_list;
 var IHD_dictionary = {};
+var IHD_inverted_dictionary = {};
 var IHD_loop;
 var IHD_obj_counter = 0;
 var IHD_dict_counter = 1; //Logic errors when reading if we start at 0 (inverse dictionary can't write a 0 key?)
@@ -64,22 +65,25 @@ const IHD_item_attribute_blacklist = [
 //Key <name> Value
 const IHD_inventory_modifications_list_special = {
     "0": {
-        "You traded with": ", but the trade was placed on hold. The items will be delivered later on",// _.",
+        "You traded with": ", but the trade was placed on hold. The items will be delivered later on"// _.",
     },
     "1": {
-        "Your trade with": "was on hold, and the trade has now completed.",
+        "Your trade with": "was on hold, and the trade has now completed."
     },
     "2": {
-        "Your trade with": "failed. The items have been returned to you.",
+        "Your trade with": "failed. The items have been returned to you."
     },
     "3": {
-        "You traded with": "",
+        "You traded with": ""
     },
     "4": {
-        "Gift sent to": "",
+        "Gift sent to": ""
     },
     "5": {
-        "Your held trade with": "was canceled. The items have been returned to you.",
+        "Your held trade with": "was canceled. The items have been returned to you."
+    },
+    "6": {
+        "Received a gift from": ""
     }
 }
 
@@ -91,7 +95,8 @@ const IHD_inventory_modifications_list_special_names = [
     "Trade hold failed",
     "Traded",
     "Gift sent",
-    "Trade hold canceled, items returned"
+    "Trade hold canceled, items returned",
+    "Received a gift from someone"
 ]
 
 //Regular modifications
@@ -109,7 +114,7 @@ const IHD_inventory_modifications_list = [
     "Purchased from the store",
     "Traded up", //10
     "Gift wrapped",
-    "Received a gift from", //This has steam usernames on the event TODO
+    "IHD_FILLER", //This event got moved to a trade related (106) id but I am too lazy to fix all of the hard coded event ids based on the old list TODO?
     "You deleted",
     "Used as input to recipe",
     "Recipe completed",
@@ -168,8 +173,7 @@ const IHD_creation_events = [
     "Unlocked a crate",
     "Purchased from the store",
     "Traded up",
-    "Gift wrapped",
-    "Received a gift from",
+    "Gift wrapped", //The actual gift item is a new item, but contains an old item
     "Recipe completed",
     "Earned a promotional item",
     "Started testing an item from the store",
@@ -333,6 +337,7 @@ function IHD_addButtons(jNode) {
     IHD_file_input.addEventListener('change', async (event) => {
         IHD_json_object = {};
         IHD_dictionary = {};
+        IHD_inverted_dictionary = {};
         IHD_file_list = event.target.files;
         IHD_read_file_objects(await IHD_read_files());
         IHD_stats_button.disabled = false;
@@ -441,6 +446,7 @@ function IHD_read_file_objects(objects) {
             }
         }
     }
+    IHD_inverted_dictionary = invertDictionary(IHD_dictionary);
 }
 //Take events item groups (gain/lost/hold) from the 2nd+ files and re-assign proper dictionary values to their items
 function IHD_file_items_handler(items, dictionary) {
@@ -485,7 +491,6 @@ function IHD_file_items_handler(items, dictionary) {
     "Purchased with Blood Money"    56
  */
 var IHD_events_type_sorted = {};
-var IHD_inverted_dictionary = {};
 
 function hideAllChildDivs(myDiv) {
     // Get all child div elements of myDiv
@@ -1120,7 +1125,7 @@ function IHD_enableButton() {
     IHD_download_button.disabled = false;
     IHD_stats_button.disabled = false;
     IHD_ready_to_load = true;
-    IHD_json_object.dictionary = invertDictionary(IHD_dictionary);
+    IHD_json_object.dictionary = IHD_inverted_dictionary;
     IHD_download(JSON.stringify(IHD_json_object), 'inventory_history.json', 'application/json');
 }
 
@@ -1291,7 +1296,7 @@ function IHD_usedEventIsUnbox(eventId, save) {
 function IHD_saveLastEventUsed(lastEvent) {
     if (IHD_used_temp_obj.event === 21 //Change used event to unbox event if the item we used is in the crate array IHD_crate_items_used
         && Object.keys(IHD_used_temp_obj[IHD_items_lost_attr]).length > 0
-        && IHD_crate_items_used.includes(IHD_used_temp_obj[IHD_items_lost_attr][0].market_hash_name)) {
+        && IHD_crate_items_used.includes(IHD_inverted_dictionary[IHD_used_temp_obj[IHD_items_lost_attr][0].name])) {
         IHD_used_temp_obj.event = 8;
     }
     IHD_json_object[IHD_obj_counter] = IHD_used_temp_obj;
@@ -1369,8 +1374,9 @@ function IHD_tradeHistoryRowToJson() {
     }
     this.remove();
     //Used event
-    if (((Object.keys(IHD_items_lost).length > 0 && IHD_crate_items_used.includes(IHD_items_lost[0]))
-        || (IHD_used_temp_obj[IHD_items_lost_attr] && IHD_crate_items_used.includes(IHD_used_temp_obj[IHD_items_lost_attr][0])))
+
+    if (((Object.keys(IHD_items_lost).length > 0 && IHD_crate_items_used.includes(IHD_inverted_dictionary[IHD_items_lost[0].name]))
+        || (IHD_used_temp_obj[IHD_items_lost_attr] && IHD_crate_items_used.includes(IHD_inverted_dictionary[IHD_used_temp_obj[IHD_items_lost_attr][0].name])))
         && IHD_usedEventIsUnbox(IHD_eventId, true)) { //Objects lost are a crate AND valid used event
 
         if (IHD_eventId === 21) {
@@ -1379,7 +1385,7 @@ function IHD_tradeHistoryRowToJson() {
         } else if (IHD_eventId === 20) {
             if (IHD_last_event_used === 2) {
                 var i = Object.keys(IHD_used_temp_obj[IHD_items_gained_attr]).length;
-                for (var key in IHD_inventory_event[IHD_items_gained_attr]) { //For loop might be overkill since we only get 1 object gained
+                for (var key in IHD_inventory_event[IHD_items_gained_attr]) {
                     IHD_used_temp_obj[IHD_items_gained_attr][i] = IHD_inventory_event[IHD_items_gained_attr][key];
                     i++;
                 }
@@ -1470,6 +1476,7 @@ function IHD_itemsToJson(itemDiv, event) {
                         IHD_item_json.name = IHD_dictionary[value];
                     } else {
                         IHD_dictionary[value] = IHD_dict_counter;
+                        IHD_inverted_dictionary[IHD_dict_counter] = value;
                         IHD_item_json.name = IHD_dict_counter;
                         IHD_dict_counter++;
                     }
@@ -1488,6 +1495,7 @@ function IHD_itemsToJson(itemDiv, event) {
                             IHD_item_json[IHD_items_type_attr] = IHD_dictionary[type];
                         } else {
                             IHD_dictionary[type] = IHD_dict_counter;
+                            IHD_inverted_dictionary[IHD_dict_counter] = value;
                             IHD_item_json[IHD_items_type_attr] = IHD_dict_counter;
                             IHD_dict_counter++;
                         }
@@ -1496,6 +1504,7 @@ function IHD_itemsToJson(itemDiv, event) {
                             IHD_item_json[IHD_items_type_attr] = IHD_dictionary[value];
                         } else {
                             IHD_dictionary[value] = IHD_dict_counter;
+                            IHD_inverted_dictionary[IHD_dict_counter] = value;
                             IHD_item_json[IHD_items_type_attr] = IHD_dict_counter;
                             IHD_dict_counter++;
                         }

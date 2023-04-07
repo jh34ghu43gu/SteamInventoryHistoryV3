@@ -33,6 +33,13 @@
  ### 0.6.3
  * Stats for unbox events
 
+ ### 0.6.4
+ * Fixed issue #2 (giftapualt events) and hopefully (test download running after commit) #4 (unlocked/used crates not working)
+   * Side effect of #2 is the item id list has an unused event for id 12
+   * Side effect of #4 is an inverted dictionary is now kept updated while downloading
+     * Minor speed boost when actually creating the download file since the dictionary doesn't need inverted?
+     * At the same time doubles the memory needed for the dictionary, although my personal history only had just north of 6k entries so probably not terrible.
+
  ## 0.5
  * Previous downloads can be read into the script before starting a download.
    * Incompatable with any downloads prior to version 0.4.6.
