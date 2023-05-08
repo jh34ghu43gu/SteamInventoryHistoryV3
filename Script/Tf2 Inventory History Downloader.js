@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.6.4
+// @version      0.6.5
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -232,7 +232,7 @@ const IHD_wear_map = {
 };
 
 
-//Being script
+//Begin script
 waitForKeyElements(".inventory_history_pagingrow", IHD_addButtons);
 
 function IHD_addButtons(jNode) {
@@ -533,6 +533,10 @@ function IHD_stats_report() {
     }
     IHD_mvm_stats_report();
     IHD_unbox_stats_report();
+    IHD_mannco_purchases_report();
+
+    IHD_deleted_report();
+    IHD_found_report();
 
 
 
@@ -581,7 +585,6 @@ const IHD_mvm_robo_hat_list = [
     "Stealth Steeler",
     "RoBro 3000"
 ];
-
 function IHD_mvm_stats_report() {
     var IHD_mvm_obj = {
         "kits": {},
@@ -818,6 +821,7 @@ function IHD_mvm_stats_report() {
     document.getElementById("IHD_stats_div").innerHTML += "<br><div class=\"surplus\"><h2>Surplus Loot</h2></div>" + IHD_stats_obj_to_html(IHD_surplus_obj)[0] + "<br>";
 }
 
+//Unboxes report
 function IHD_unbox_stats_report() {
     var IHD_unbox_obj = {
         "All Unusuals": {},
@@ -881,7 +885,7 @@ function IHD_unbox_stats_report() {
     if ("8" in IHD_events_type_sorted) {
         for (const [key, value] of Object.entries(IHD_events_type_sorted["8"])) {
             if (IHD_items_lost_attr in value) {
-                var crate_type = IHD_get_crate_name(value[IHD_items_lost_attr]);
+                var crate_type = IHD_get_crate_name(value[IHD_items_lost_attr], true);
                 if (crate_type.length > 1) {
                     //Set crate name in appropriate object
                     if (crate_type.length > 2) { //case
@@ -1040,11 +1044,187 @@ function IHD_unbox_stats_report() {
 
 }
 
+//Store purchases report
+function IHD_mannco_purchases_report() {
+    var IHD_purchases_obj = {
+        "Taunts": {},
+        "Keys": {},
+        "Unlocked Crates": {},
+        "Paints": {},
+        "ToDs": {},
+        "Packages": {},
+        "Other": {}
+    }
+    var i = 0;
+    if ("9" in IHD_events_type_sorted) {
+        for (const [key, value] of Object.entries(IHD_events_type_sorted["9"])) {
+            if (IHD_items_gained_attr in value) {
+                for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
+                    if ("name" in value2) {
+                        var name = IHD_inverted_dictionary[value2["name"]];
+                        if (name.startsWith("Taunt")) {
+                            if (name in IHD_purchases_obj["Taunts"]) {
+                                IHD_purchases_obj["Taunts"][name]++;
+                            } else {
+                                IHD_purchases_obj["Taunts"][name] = 1;
+                            }
+                        } else if (name.startsWith("Unlocked")) {
+                            if (name in IHD_purchases_obj["Unlocked Crates"]) {
+                                IHD_purchases_obj["Unlocked Crates"][name]++;
+                            } else {
+                                IHD_purchases_obj["Unlocked Crates"][name] = 1;
+                            }
+                        } else if (name.endsWith("Key")) {
+                            if (name in IHD_purchases_obj["Keys"]) {
+                                IHD_purchases_obj["Keys"][name]++;
+                            } else {
+                                IHD_purchases_obj["Keys"][name] = 1;
+                            }
+                        } else if (name === "Squad Surplus Voucher" || name === "Tour of Duty Ticket") {
+                            if (name in IHD_purchases_obj["ToDs"]) {
+                                IHD_purchases_obj["ToDs"][name]++;
+                            } else {
+                                IHD_purchases_obj["ToDs"][name] = 1;
+                            }
+                        } else if (name === "Mann Co. Store Package") {
+                            if (name in IHD_purchases_obj["Packages"]) {
+                                IHD_purchases_obj["Packages"][name]++;
+                            } else {
+                                IHD_purchases_obj["Packages"][name] = 1;
+                            }
+                        } else if (IHD_paint_list.includes(name)) {
+                            if (name in IHD_purchases_obj["Paints"]) {
+                                IHD_purchases_obj["Paints"][name]++;
+                            } else {
+                                IHD_purchases_obj["Paints"][name] = 1;
+                            }
+                        } else {
+                            if (name in IHD_purchases_obj["Other"]) {
+                                IHD_purchases_obj["Other"][name]++;
+                            } else {
+                                IHD_purchases_obj["Other"][name] = 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    document.getElementById("IHD_stats_div").innerHTML += "<br><div class=\"mvm\"><h2>Store Purchases</h2></div>" + IHD_stats_obj_to_html(IHD_purchases_obj)[0] + "<br>";
+
+}
+
+//Deleted items report
+function IHD_deleted_report() {
+    var IHD_deleted_obj = {
+        "All Deleted Items": {}
+    }
+    var i = 0;
+    if ("13" in IHD_events_type_sorted) {
+        for (const [key, value] of Object.entries(IHD_events_type_sorted["13"])) {
+            if (IHD_items_lost_attr in value) {
+                for (const [key2, value2] of Object.entries(value[IHD_items_lost_attr])) {
+                    if ("name" in value2) {
+                        var name = IHD_inverted_dictionary[value2["name"]];
+                        if (name in IHD_deleted_obj["All Deleted Items"]) {
+                            IHD_deleted_obj["All Deleted Items"][name]++;
+                        } else {
+                            IHD_deleted_obj["All Deleted Items"][name] = 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    document.getElementById("IHD_stats_div").innerHTML += "<br><div class=\"mvm\"><h2>Deleted Items</h2></div>" + IHD_stats_obj_to_html(IHD_deleted_obj)[0] + "<br>";
+
+}
+
+//Found items report
+function IHD_found_report() {
+    var IHD_found_obj = {
+        "Weapons": {},
+        "Cases": {},
+        "Crates": {},
+        "Paints": {},
+        "Tools": {},
+        "Taunts": {},
+        "Chemistry Sets": {},
+        "Other": {}
+    }
+    var i = 0;
+    if ("37" in IHD_events_type_sorted) {
+        for (const [key, value] of Object.entries(IHD_events_type_sorted["37"])) {
+            if (IHD_items_gained_attr in value) {
+                var crate_type = IHD_get_crate_name(value[IHD_items_gained_attr], false);
+                for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
+                    if ("name" in value2) {
+                        var name = IHD_inverted_dictionary[value2["name"]];
+                        if (name.startsWith("Taunt")) {
+                            if (name in IHD_found_obj["Taunts"]) {
+                                IHD_found_obj["Taunts"][name]++;
+                            } else {
+                                IHD_found_obj["Taunts"][name] = 1;
+                            }
+                        } else if (crate_type[0] === "case") {
+                            if (name in IHD_found_obj["Cases"]) {
+                                IHD_found_obj["Cases"][name]++;
+                            } else {
+                                IHD_found_obj["Cases"][name] = 1;
+                            }
+                        } else if (crate_type[0] === "crate") {
+                            if (name in IHD_found_obj["Crates"]) {
+                                IHD_found_obj["Crates"][name]++;
+                            } else {
+                                IHD_found_obj["Crates"][name] = 1;
+                            }
+                        } else if (IHD_weapon_list.includes(name) || IHD_weapon_list.includes(name.replace("The ", ""))) {
+                            if (name in IHD_found_obj["Weapons"]) {
+                                IHD_found_obj["Weapons"][name]++;
+                            } else {
+                                IHD_found_obj["Weapons"][name] = 1;
+                            }
+                        } else if (IHD_paint_list.includes(name)) {
+                            if (name in IHD_found_obj["Paints"]) {
+                                IHD_found_obj["Paints"][name]++;
+                            } else {
+                                IHD_found_obj["Paints"][name] = 1;
+                            }
+                        } else if (IHD_tool_list.includes(name)) {
+                            if (name in IHD_found_obj["Tools"]) {
+                                IHD_found_obj["Tools"][name]++;
+                            } else {
+                                IHD_found_obj["Tools"][name] = 1;
+                            }
+                        } else if (name.includes("Chemistry Set")) {
+                            if (name in IHD_found_obj["Chemistry Sets"]) {
+                                IHD_found_obj["Chemistry Sets"][name]++;
+                            } else {
+                                IHD_found_obj["Chemistry Sets"][name] = 1;
+                            }
+                        } else {
+                            if (name in IHD_found_obj["Other"]) {
+                                IHD_found_obj["Other"][name]++;
+                            } else {
+                                IHD_found_obj["Other"][name] = 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    document.getElementById("IHD_stats_div").innerHTML += "<br><div class=\"mvm\"><h2>Found Items</h2></div>" + IHD_stats_obj_to_html(IHD_found_obj)[0] + "<br>";
+
+}
 
 //Return an array with name data for a case/crate unbox
 //Example data for case ["case", case_type, name]
 //Example data for crate ["crate", name]
-function IHD_get_crate_name(lost_items) {
+function IHD_get_crate_name(lost_items, bLog) {
     for (const [key, value] of Object.entries(lost_items)) {
         if ("name" in value) {
             var name = IHD_inverted_dictionary[value["name"]];
@@ -1064,7 +1244,9 @@ function IHD_get_crate_name(lost_items) {
             }
         }
     }
-    console.log("Couldn't determine crate/case type for " + lost_items);
+    if (bLog) {
+        console.log("Couldn't determine crate/case type for " + lost_items);
+    }
     return ["Invalid"];
 }
 
@@ -1751,7 +1933,8 @@ const IHD_tool_list = [
     "Description Tag",
     "Decal Tool",
     "Giftapult",
-    "Dueling Mini-Game"
+    "Dueling Mini-Game",
+    "Enchantment: Eternaween"
 ];
 
 const IHD_paint_list = [
