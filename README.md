@@ -43,6 +43,13 @@
  ### 0.6.5
  * Stats for in-game purchases, deleted items, and found items.
 
+ ### 0.6.6
+ * Made a function to cutdown the if-else spam in the stat report methods.
+ * Deleted items report filters weapons into its own div.
+ * Stats for used items, crafted items (both used for crafting and created by crafting), and earned items (holiday items).
+   * Used items revealed that 0.6.4 fix for issue #4 wasn't complete as there's still 2 unlocked 2016 cases in the results :(
+     * Probably due to unknown items so maybe fixed when handling for those is added.
+
  ## 0.5
  * Previous downloads can be read into the script before starting a download.
    * Incompatable with any downloads prior to version 0.4.6.

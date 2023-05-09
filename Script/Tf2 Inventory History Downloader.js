@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.6.5
+// @version      0.6.6
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -537,6 +537,9 @@ function IHD_stats_report() {
 
     IHD_deleted_report();
     IHD_found_report();
+    IHD_used_report();
+    IHD_crafted_report();
+    IHD_earned_report();
 
 
 
@@ -552,6 +555,41 @@ function IHD_stats_report() {
                 content.className = "visible";
             }
         });
+    }
+}
+
+//Incriment our item counters in obj[child] or obj[child][child2]etc
+function IHD_stats_add_item_to_obj(obj, name, child, child2, child3, child4) {
+    if (child4) {
+        if (name in obj[child][child2][child3][child4]) {
+            obj[child][child2][child3][child4][name]++;
+        } else {
+            obj[child][child2][child3][child4][name] = 1;
+        }
+    } else if (child3) {
+        if (name in obj[child][child2][child3]) {
+            obj[child][child2][child3][name]++;
+        } else {
+            obj[child][child2][child3][name] = 1;
+        }
+    } else if (child2) {
+        if (name in obj[child][child2]) {
+            obj[child][child2][name]++;
+        } else {
+            obj[child][child2][name] = 1;
+        }
+    } else if (child) {
+        if (name in obj[child]) {
+            obj[child][name]++;
+        } else {
+            obj[child][name] = 1;
+        }
+    } else {
+        if (name in obj[child]) {
+            obj[name]++;
+        } else {
+            obj[nmae] = 1;
+        }
     }
 }
 
@@ -639,127 +677,47 @@ function IHD_mvm_stats_report() {
                     if ("name" in value2) {
                         var name = IHD_inverted_dictionary[value2["name"]];
                         if (name.includes("Golden Frying Pan") || name.includes("Australium")) {
-                            if (name in IHD_mvm_obj["aussies"]) {
-                                IHD_mvm_obj["aussies"][name]++;
-                            } else {
-                                IHD_mvm_obj["aussies"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "aussies");
                         } else if (name.includes("Professional")) {
-                            if (name in IHD_mvm_obj["prof"]) {
-                                IHD_mvm_obj["prof"][name]++;
-                            } else {
-                                IHD_mvm_obj["prof"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "prof");
                         } else if (name.includes("Specialized")) {
-                            if (name in IHD_mvm_obj["spec"]) {
-                                IHD_mvm_obj["spec"][name]++;
-                            } else {
-                                IHD_mvm_obj["spec"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "spec");
                         } else if (name.includes("Killstreak")) {
-                            if (name in IHD_mvm_obj["kits"]) {
-                                IHD_mvm_obj["kits"][name]++;
-                            } else {
-                                IHD_mvm_obj["kits"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "kits");
                         } else if (IHD_mvm_parts_list.includes(name)) {
-                            if (name in IHD_mvm_obj["parts"]) {
-                                IHD_mvm_obj["parts"][name]++;
-                            } else {
-                                IHD_mvm_obj["parts"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "parts");
                         } else if (IHD_mvm_badge_list.includes(name)) {
-                            if (name in IHD_mvm_obj["badges"]) {
-                                IHD_mvm_obj["badges"][name]++;
-                            } else {
-                                IHD_mvm_obj["badges"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "badges");
                         } else if (name.includes("Botkiller")) {
                             if (name.includes("Carbonado")) {
-                                if (name in IHD_mvm_obj["botkillers"]["gg"]["carbonado"]) {
-                                    IHD_mvm_obj["botkillers"]["gg"]["carbonado"][name]++;
-                                } else {
-                                    IHD_mvm_obj["botkillers"]["gg"]["carbonado"][name] = 1;
-                                }
+                                IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "botkillers", "gg", "carbonado");
                             } else if (name.includes("Diamond")) {
-                                if (name in IHD_mvm_obj["botkillers"]["gg"]["diamond"]) {
-                                    IHD_mvm_obj["botkillers"]["gg"]["diamond"][name]++;
-                                } else {
-                                    IHD_mvm_obj["botkillers"]["gg"]["diamond"][name] = 1;
-                                }
+                                IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "botkillers", "gg", "diamond");
                             } else if (name.includes("Rust")) {
-                                if (name in IHD_mvm_obj["botkillers"]["os"]["rust"]) {
-                                    IHD_mvm_obj["botkillers"]["os"]["rust"][name]++;
-                                } else {
-                                    IHD_mvm_obj["botkillers"]["os"]["rust"][name] = 1;
-                                }
+                                IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "botkillers", "os", "rust");
                             } else if (name.includes("Blood")) {
-                                if (name in IHD_mvm_obj["botkillers"]["os"]["blood"]) {
-                                    IHD_mvm_obj["botkillers"]["os"]["blood"][name]++;
-                                } else {
-                                    IHD_mvm_obj["botkillers"]["os"]["blood"][name] = 1;
-                                }
+                                IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "botkillers", "os", "blood");
                             } else if (name.includes("Silver") && name.includes("Mk.II")) {
-                                if (name in IHD_mvm_obj["botkillers"]["me"]["silver"]) {
-                                    IHD_mvm_obj["botkillers"]["me"]["silver"][name]++;
-                                } else {
-                                    IHD_mvm_obj["botkillers"]["me"]["silver"][name] = 1;
-                                }
+                                IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "botkillers", "me", "silver");
                             } else if (name.includes("Gold") && name.includes("Mk.II")) {
-                                if (name in IHD_mvm_obj["botkillers"]["me"]["gold"]) {
-                                    IHD_mvm_obj["botkillers"]["me"]["gold"][name]++;
-                                } else {
-                                    IHD_mvm_obj["botkillers"]["me"]["gold"][name] = 1;
-                                }
+                                IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "botkillers", "me", "gold");
                             } else if (name.includes("Silver")) {
-                                if (name in IHD_mvm_obj["botkillers"]["st"]["silver"]) {
-                                    IHD_mvm_obj["botkillers"]["st"]["silver"][name]++;
-                                } else {
-                                    IHD_mvm_obj["botkillers"]["st"]["silver"][name] = 1;
-                                }
+                                IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "botkillers", "st", "silver");
                             } else if (name.includes("Gold")) {
-                                if (name in IHD_mvm_obj["botkillers"]["st"]["gold"]) {
-                                    IHD_mvm_obj["botkillers"]["st"]["gold"][name]++;
-                                } else {
-                                    IHD_mvm_obj["botkillers"]["st"]["gold"][name] = 1;
-                                }
+                                IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "botkillers", "st", "gold");
                             }
                         } else if (IHD_weapon_list.includes(name) || IHD_weapon_list.includes(name.replace("The ", ""))) {
-                            if (name in IHD_mvm_obj["weapons"]) {
-                                IHD_mvm_obj["weapons"][name]++;
-                            } else {
-                                IHD_mvm_obj["weapons"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "weapons");
                         } else if (IHD_tool_list.includes(name)) {
-                            if (name in IHD_mvm_obj["tools"]) {
-                                IHD_mvm_obj["tools"][name]++;
-                            } else {
-                                IHD_mvm_obj["tools"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "tools");
                         } else if (IHD_paint_list.includes(name)) {
-                            if (name in IHD_mvm_obj["tools"]["paint"]) {
-                                IHD_mvm_obj["tools"]["paint"][name]++;
-                            } else {
-                                IHD_mvm_obj["tools"]["paint"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "tools", "paint");
                         } else if (IHD_mvm_robo_hat_list.includes(name) || IHD_mvm_robo_hat_list.includes(name.replace("The ", ""))) {
-                            if (name in IHD_mvm_obj["hats"]["robo"]) {
-                                IHD_mvm_obj["hats"]["robo"][name]++;
-                            } else {
-                                IHD_mvm_obj["hats"]["robo"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "hats", "robo");
                         } else if (IHD_hat_list.includes(name) || IHD_hat_list.includes(name.replace("The ", ""))) {
-                            if (name in IHD_mvm_obj["hats"]["hat"]) {
-                                IHD_mvm_obj["hats"]["hat"][name]++;
-                            } else {
-                                IHD_mvm_obj["hats"]["hat"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "hats", "hat");
                         } else {
-                            if (name in IHD_mvm_obj) {
-                                IHD_mvm_obj[name]++;
-                            } else {
-                                IHD_mvm_obj[name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name);
                         }
                     }
                 }
@@ -775,41 +733,17 @@ function IHD_mvm_stats_report() {
                     if ("name" in value2) {
                         name = IHD_inverted_dictionary[value2["name"]];
                         if (IHD_weapon_list.includes(name) || IHD_weapon_list.includes(name.replace("The ", ""))) {
-                            if (name in IHD_surplus_obj["weapons"]) {
-                                IHD_surplus_obj["weapons"][name]++;
-                            } else {
-                                IHD_surplus_obj["weapons"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_surplus_obj, name, "weapons");
                         } else if (IHD_tool_list.includes(name)) {
-                            if (name in IHD_surplus_obj["tools"]) {
-                                IHD_surplus_obj["tools"][name]++;
-                            } else {
-                                IHD_surplus_obj["tools"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_surplus_obj, name, "tools");
                         } else if (IHD_paint_list.includes(name)) {
-                            if (name in IHD_surplus_obj["tools"]["paint"]) {
-                                IHD_surplus_obj["tools"]["paint"][name]++;
-                            } else {
-                                IHD_surplus_obj["tools"]["paint"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_surplus_obj, name, "tools", "paint");
                         } else if (IHD_mvm_robo_hat_list.includes(name) || IHD_mvm_robo_hat_list.includes(name.replace("The ", ""))) {
-                            if (name in IHD_surplus_obj["hats"]["robo"]) {
-                                IHD_surplus_obj["hats"]["robo"][name]++;
-                            } else {
-                                IHD_surplus_obj["hats"]["robo"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_surplus_obj, name, "hats", "robo");
                         } else if (IHD_hat_list.includes(name) || IHD_hat_list.includes(name.replace("The ", ""))) {
-                            if (name in IHD_surplus_obj["hats"]["hat"]) {
-                                IHD_surplus_obj["hats"]["hat"][name]++;
-                            } else {
-                                IHD_surplus_obj["hats"]["hat"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_surplus_obj, name, "hats", "hat");
                         } else {
-                            if (name in IHD_surplus_obj) {
-                                IHD_surplus_obj[name]++;
-                            } else {
-                                IHD_surplus_obj[name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_surplus_obj, name);
                         }
                     }
                 }
@@ -910,75 +844,26 @@ function IHD_unbox_stats_report() {
                                 if (crate_type.length > 2) {
                                     //Bonus items
                                     if (IHD_paint_list.includes(name)) { //Paint
-                                        if (name in IHD_unbox_obj["cases"]["Total Bonus Items"]["Paint"]) {
-                                            IHD_unbox_obj["cases"]["Total Bonus Items"]["Paint"][name]++;
-                                        } else {
-                                            IHD_unbox_obj["cases"]["Total Bonus Items"]["Paint"][name] = 1;
-                                        }
-                                        if (name in IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"]["Paint"]) {
-                                            IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"]["Paint"][name]++;
-                                        } else {
-                                            IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"]["Paint"][name] = 1;
-                                        }
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", "Total Bonus Items", "Paint");
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", crate_type[1], "Bonus Items", "Paint");
                                     } else if (IHD_tool_list.includes(name)) { //Tools
-                                        if (name in IHD_unbox_obj["cases"]["Total Bonus Items"]["Tools"]) {
-                                            IHD_unbox_obj["cases"]["Total Bonus Items"]["Tools"][name]++;
-                                        } else {
-                                            IHD_unbox_obj["cases"]["Total Bonus Items"]["Tools"][name] = 1;
-                                        }
-                                        if (name in IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"]["Tools"]) {
-                                            IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"]["Tools"][name]++;
-                                        } else {
-                                            IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"]["Tools"][name] = 1;
-                                        }
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", "Total Bonus Items", "Tools");
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", crate_type[1], "Bonus Items", "Tools");
                                     } else if (name.includes("Strange Part: ")) { //Strange parts
-                                        if (name in IHD_unbox_obj["cases"]["Total Bonus Items"]["Strange Parts"]) {
-                                            IHD_unbox_obj["cases"]["Total Bonus Items"]["Strange Parts"][name]++;
-                                        } else {
-                                            IHD_unbox_obj["cases"]["Total Bonus Items"]["Strange Parts"][name] = 1;
-                                        }
-                                        if (name in IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"]["Strange Parts"]) {
-                                            IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"]["Strange Parts"][name]++;
-                                        } else {
-                                            IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"]["Strange Parts"][name] = 1;
-                                        }
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", "Total Bonus Items", "Strange Parts");
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", crate_type[1], "Bonus Items", "Strange Parts");
                                     } else if (name.includes("Unusualifier")) { //Unusualifiers
-                                        if (name in IHD_unbox_obj["cases"]["Total Bonus Items"]["Unusualifiers"]) {
-                                            IHD_unbox_obj["cases"]["Total Bonus Items"]["Unusualifiers"][name]++;
-                                        } else {
-                                            IHD_unbox_obj["cases"]["Total Bonus Items"]["Unusualifiers"][name] = 1;
-                                        }
-                                        if (name in IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"]["Unusualifiers"]) {
-                                            IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"]["Unusualifiers"][name]++;
-                                        } else {
-                                            IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"]["Unusualifiers"][name] = 1;
-                                        }
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", "Total Bonus Items", "Unusualifiers");
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", crate_type[1], "Bonus Items", "Unusualifiers");
                                     } else if (name === "Tour of Duty Ticket" || name === "Strange Count Transfer Tool") { //ToD and stat transfer
-                                        if (name in IHD_unbox_obj["cases"]["Total Bonus Items"]) {
-                                            IHD_unbox_obj["cases"]["Total Bonus Items"][name]++;
-                                        } else {
-                                            IHD_unbox_obj["cases"]["Total Bonus Items"][name] = 1;
-                                        }
-                                        if (name in IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"]) {
-                                            IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"][name]++;
-                                        } else {
-                                            IHD_unbox_obj["cases"][crate_type[1]]["Bonus Items"][name] = 1;
-                                        }
-                                    }
-                                    //Not a bonus item
-                                    else if (name in IHD_unbox_obj["cases"][crate_type[1]][crate_type[2]]) {
-                                        IHD_unbox_obj["cases"][crate_type[1]][crate_type[2]][name]++;
-                                        bonus = false;
-                                    } else {
-                                        IHD_unbox_obj["cases"][crate_type[1]][crate_type[2]][name] = 1;
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", "Total Bonus Items");
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", crate_type[1], "Bonus Items");
+                                    } else { //Not a bonus item
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", crate_type[1], [crate_type[2]]);
                                         bonus = false;
                                     }
                                 } else {
-                                    if (name in IHD_unbox_obj["crates"][crate_type[1]]) {
-                                        IHD_unbox_obj["crates"][crate_type[1]][name]++;
-                                    } else {
-                                        IHD_unbox_obj["crates"][crate_type[1]][name] = 1;
-                                    }
+                                    IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "crates", crate_type[1]);
                                 }
                                 //Increment qualities
                                 if ("Quality" in value2) {
@@ -994,34 +879,14 @@ function IHD_unbox_stats_report() {
                                             IHD_unbox_obj["cases"]["Total Stranges"]++;
                                             IHD_unbox_obj["cases"][crate_type[1]]["Stranges"]++;
                                         } else if (quality === "5" && !name.includes("Unusualifier")) { //Unusualifiers ARE NOT unusuals
-                                            if (name in IHD_unbox_obj["cases"]["Total Unusuals"]) {
-                                                IHD_unbox_obj["cases"]["Total Unusuals"][name]++;
-                                            } else {
-                                                IHD_unbox_obj["cases"]["Total Unusuals"][name] = 1;
-                                            }
-                                            if (name in IHD_unbox_obj["cases"][crate_type[1]]["Unusuals"]) {
-                                                IHD_unbox_obj["cases"][crate_type[1]]["Unusuals"][name]++;
-                                            } else {
-                                                IHD_unbox_obj["cases"][crate_type[1]]["Unusuals"][name] = 1;
-                                            }
-                                            if (name in IHD_unbox_obj["All Unusuals"]) {
-                                                IHD_unbox_obj["All Unusuals"][name]++;
-                                            } else {
-                                                IHD_unbox_obj["All Unusuals"][name] = 1;
-                                            }
+                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", "Total Unusuals");
+                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", crate_type[1], "Unusuals");
+                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "All Unusuals");
                                         }
                                     } else {
                                         if (quality === "5" && !name.includes("Unusualifier")) { //Unusualifiers ARE NOT unusuals
-                                            if (name in IHD_unbox_obj["crates"]["Total Unusuals"]) {
-                                                IHD_unbox_obj["crates"]["Total Unusuals"][name]++;
-                                            } else {
-                                                IHD_unbox_obj["crates"]["Total Unusuals"][name] = 1;
-                                            }
-                                            if (name in IHD_unbox_obj["All Unusuals"]) {
-                                                IHD_unbox_obj["All Unusuals"][name]++;
-                                            } else {
-                                                IHD_unbox_obj["All Unusuals"][name] = 1;
-                                            }
+                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "crates", "Total Unusuals");
+                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "All Unusuals");
                                         }
                                     }
                                 }
@@ -1044,6 +909,8 @@ function IHD_unbox_stats_report() {
 
 }
 
+//TODO figure out how to display trade ups
+
 //Store purchases report
 function IHD_mannco_purchases_report() {
     var IHD_purchases_obj = {
@@ -1063,47 +930,19 @@ function IHD_mannco_purchases_report() {
                     if ("name" in value2) {
                         var name = IHD_inverted_dictionary[value2["name"]];
                         if (name.startsWith("Taunt")) {
-                            if (name in IHD_purchases_obj["Taunts"]) {
-                                IHD_purchases_obj["Taunts"][name]++;
-                            } else {
-                                IHD_purchases_obj["Taunts"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_purchases_obj, name, "Taunts");
                         } else if (name.startsWith("Unlocked")) {
-                            if (name in IHD_purchases_obj["Unlocked Crates"]) {
-                                IHD_purchases_obj["Unlocked Crates"][name]++;
-                            } else {
-                                IHD_purchases_obj["Unlocked Crates"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_purchases_obj, name, "Unlocked Crates");
                         } else if (name.endsWith("Key")) {
-                            if (name in IHD_purchases_obj["Keys"]) {
-                                IHD_purchases_obj["Keys"][name]++;
-                            } else {
-                                IHD_purchases_obj["Keys"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_purchases_obj, name, "Keys");
                         } else if (name === "Squad Surplus Voucher" || name === "Tour of Duty Ticket") {
-                            if (name in IHD_purchases_obj["ToDs"]) {
-                                IHD_purchases_obj["ToDs"][name]++;
-                            } else {
-                                IHD_purchases_obj["ToDs"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_purchases_obj, name, "ToDs");
                         } else if (name === "Mann Co. Store Package") {
-                            if (name in IHD_purchases_obj["Packages"]) {
-                                IHD_purchases_obj["Packages"][name]++;
-                            } else {
-                                IHD_purchases_obj["Packages"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_purchases_obj, name, "Packages");
                         } else if (IHD_paint_list.includes(name)) {
-                            if (name in IHD_purchases_obj["Paints"]) {
-                                IHD_purchases_obj["Paints"][name]++;
-                            } else {
-                                IHD_purchases_obj["Paints"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_purchases_obj, name, "Paints");
                         } else {
-                            if (name in IHD_purchases_obj["Other"]) {
-                                IHD_purchases_obj["Other"][name]++;
-                            } else {
-                                IHD_purchases_obj["Other"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_purchases_obj, name, "Other");
                         }
                     }
                 }
@@ -1118,7 +957,8 @@ function IHD_mannco_purchases_report() {
 //Deleted items report
 function IHD_deleted_report() {
     var IHD_deleted_obj = {
-        "All Deleted Items": {}
+        "Weapons": {},
+        "Other Deleted Items": {}
     }
     var i = 0;
     if ("13" in IHD_events_type_sorted) {
@@ -1127,10 +967,10 @@ function IHD_deleted_report() {
                 for (const [key2, value2] of Object.entries(value[IHD_items_lost_attr])) {
                     if ("name" in value2) {
                         var name = IHD_inverted_dictionary[value2["name"]];
-                        if (name in IHD_deleted_obj["All Deleted Items"]) {
-                            IHD_deleted_obj["All Deleted Items"][name]++;
+                        if (IHD_weapon_list.includes(name) || IHD_weapon_list.includes(name.replace("The ", ""))) {
+                            IHD_stats_add_item_to_obj(IHD_deleted_obj, name, "Weapons");
                         } else {
-                            IHD_deleted_obj["All Deleted Items"][name] = 1;
+                            IHD_stats_add_item_to_obj(IHD_deleted_obj, name, "Other Deleted Items");
                         }
                     }
                 }
@@ -1139,6 +979,32 @@ function IHD_deleted_report() {
     }
 
     document.getElementById("IHD_stats_div").innerHTML += "<br><div class=\"mvm\"><h2>Deleted Items</h2></div>" + IHD_stats_obj_to_html(IHD_deleted_obj)[0] + "<br>";
+
+}
+
+//Used items report
+function IHD_used_report() {
+    var IHD_used_obj = {
+        "Used Items": {}
+    }
+    var i = 0;
+    if ("21" in IHD_events_type_sorted) {
+        for (const [key, value] of Object.entries(IHD_events_type_sorted["21"])) {
+            if (IHD_items_lost_attr in value) {
+                for (const [key2, value2] of Object.entries(value[IHD_items_lost_attr])) {
+                    if ("name" in value2) {
+                        var name = IHD_inverted_dictionary[value2["name"]];
+                        IHD_stats_add_item_to_obj(IHD_used_obj, name, "Used Items");
+                    }
+                }
+            }
+            if (IHD_items_gained_attr in value) {
+                console.log(value[IHD_items_gained_attr]);
+            }
+        }
+    }
+
+    document.getElementById("IHD_stats_div").innerHTML += "<br><div class=\"mvm\"><h2>Used Items</h2></div>" + IHD_stats_obj_to_html(IHD_used_obj)[0] + "<br>";
 
 }
 
@@ -1163,53 +1029,21 @@ function IHD_found_report() {
                     if ("name" in value2) {
                         var name = IHD_inverted_dictionary[value2["name"]];
                         if (name.startsWith("Taunt")) {
-                            if (name in IHD_found_obj["Taunts"]) {
-                                IHD_found_obj["Taunts"][name]++;
-                            } else {
-                                IHD_found_obj["Taunts"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_found_obj, name, "Taunts");
                         } else if (crate_type[0] === "case") {
-                            if (name in IHD_found_obj["Cases"]) {
-                                IHD_found_obj["Cases"][name]++;
-                            } else {
-                                IHD_found_obj["Cases"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_found_obj, name, "Cases");
                         } else if (crate_type[0] === "crate") {
-                            if (name in IHD_found_obj["Crates"]) {
-                                IHD_found_obj["Crates"][name]++;
-                            } else {
-                                IHD_found_obj["Crates"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_found_obj, name, "Crates");
                         } else if (IHD_weapon_list.includes(name) || IHD_weapon_list.includes(name.replace("The ", ""))) {
-                            if (name in IHD_found_obj["Weapons"]) {
-                                IHD_found_obj["Weapons"][name]++;
-                            } else {
-                                IHD_found_obj["Weapons"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_found_obj, name, "Weapons");
                         } else if (IHD_paint_list.includes(name)) {
-                            if (name in IHD_found_obj["Paints"]) {
-                                IHD_found_obj["Paints"][name]++;
-                            } else {
-                                IHD_found_obj["Paints"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_found_obj, name, "Paints");
                         } else if (IHD_tool_list.includes(name)) {
-                            if (name in IHD_found_obj["Tools"]) {
-                                IHD_found_obj["Tools"][name]++;
-                            } else {
-                                IHD_found_obj["Tools"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_found_obj, name, "Tools");
                         } else if (name.includes("Chemistry Set")) {
-                            if (name in IHD_found_obj["Chemistry Sets"]) {
-                                IHD_found_obj["Chemistry Sets"][name]++;
-                            } else {
-                                IHD_found_obj["Chemistry Sets"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_found_obj, name, "Chemistry Sets");
                         } else {
-                            if (name in IHD_found_obj["Other"]) {
-                                IHD_found_obj["Other"][name]++;
-                            } else {
-                                IHD_found_obj["Other"][name] = 1;
-                            }
+                            IHD_stats_add_item_to_obj(IHD_found_obj, name, "Other");
                         }
                     }
                 }
@@ -1218,6 +1052,86 @@ function IHD_found_report() {
     }
 
     document.getElementById("IHD_stats_div").innerHTML += "<br><div class=\"mvm\"><h2>Found Items</h2></div>" + IHD_stats_obj_to_html(IHD_found_obj)[0] + "<br>";
+
+}
+
+//Crafted items report
+function IHD_crafted_report() {
+    var IHD_crafted_obj = {
+        "Used Items": {
+            "Tokens": {},
+            "Metal": {},
+            "Weapons": {}
+        },
+        "Created Items": {
+            "Tokens": {},
+            "Metal": {},
+            "Weapons": {}
+        }
+    }
+    var i = 0;
+    if ("42" in IHD_events_type_sorted) {
+        for (const [key, value] of Object.entries(IHD_events_type_sorted["42"])) {
+            if (IHD_items_lost_attr in value) {
+                for (const [key2, value2] of Object.entries(value[IHD_items_lost_attr])) {
+                    if ("name" in value2) {
+                        var name = IHD_inverted_dictionary[value2["name"]];
+                        if (name.includes("Token")) {
+                            IHD_stats_add_item_to_obj(IHD_crafted_obj, name, "Used Items", "Tokens");
+                        } else if (name === "Refined Metal" || name === "Reclaimed Metal" || name === "Scrap Metal") {
+                            IHD_stats_add_item_to_obj(IHD_crafted_obj, name, "Used Items", "Metal");
+                        } else if (IHD_weapon_list.includes(name) || IHD_weapon_list.includes(name.replace("The ", ""))) {
+                            IHD_stats_add_item_to_obj(IHD_crafted_obj, name, "Used Items", "Weapons");
+                        } else {
+                            IHD_stats_add_item_to_obj(IHD_crafted_obj, name, "Used Items");
+                        }
+                    }
+                }
+            }
+            if (IHD_items_gained_attr in value) {
+                for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
+                    if ("name" in value2) {
+                        name = IHD_inverted_dictionary[value2["name"]];
+                        if (name.includes("Token")) {
+                            IHD_stats_add_item_to_obj(IHD_crafted_obj, name, "Created Items", "Tokens");
+                        } else if (name === "Refined Metal" || name === "Reclaimed Metal" || name === "Scrap Metal") {
+                            IHD_stats_add_item_to_obj(IHD_crafted_obj, name, "Created Items", "Metal");
+                        } else if (IHD_weapon_list.includes(name) || IHD_weapon_list.includes(name.replace("The ", ""))) {
+                            IHD_stats_add_item_to_obj(IHD_crafted_obj, name, "Created Items", "Weapons");
+                        } else {
+                            IHD_stats_add_item_to_obj(IHD_crafted_obj, name, "Created Items");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    document.getElementById("IHD_stats_div").innerHTML += "<br><div class=\"mvm\"><h2>Crafted Items</h2></div>" + IHD_stats_obj_to_html(IHD_crafted_obj)[0] + "<br>";
+
+}
+
+//Earned items report
+function IHD_earned_report() {
+    var IHD_earned_obj = {
+        "Earned": {}
+    }
+    var i = 0;
+    if ("43" in IHD_events_type_sorted) {
+        for (const [key, value] of Object.entries(IHD_events_type_sorted["43"])) {
+            if (IHD_items_gained_attr in value) {
+                var crate_type = IHD_get_crate_name(value[IHD_items_gained_attr], false);
+                for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
+                    if ("name" in value2) {
+                        var name = IHD_inverted_dictionary[value2["name"]];
+                        IHD_stats_add_item_to_obj(IHD_earned_obj, name, "Earned");
+                    }
+                }
+            }
+        }
+    }
+
+    document.getElementById("IHD_stats_div").innerHTML += "<br><div class=\"mvm\"><h2>Earned Items</h2></div>" + IHD_stats_obj_to_html(IHD_earned_obj)[0] + "<br>";
 
 }
 
