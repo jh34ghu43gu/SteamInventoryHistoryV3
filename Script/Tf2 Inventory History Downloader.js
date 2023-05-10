@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.6.6
+// @version      0.6.7
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -533,6 +533,7 @@ function IHD_stats_report() {
     }
     IHD_mvm_stats_report();
     IHD_unbox_stats_report();
+    IHD_tradeup_report();
     IHD_mannco_purchases_report();
 
     IHD_deleted_report();
@@ -540,6 +541,7 @@ function IHD_stats_report() {
     IHD_used_report();
     IHD_crafted_report();
     IHD_earned_report();
+    IHD_blood_money_report();
 
 
 
@@ -909,7 +911,109 @@ function IHD_unbox_stats_report() {
 
 }
 
-//TODO figure out how to display trade ups
+//TODO Show which item slots got selected for the output items
+//Trade-up items report
+function IHD_tradeup_report() {
+    var IHD_tradeup_obj = {
+        "Stat Clocks": {
+            "Used Items": {
+                "Strange": {},
+                "Unique": {},
+                "Unique Paints": {}
+            },
+            "Created Items": {}
+        },
+        "Item Grade Trade-Ups": {
+            "Used Items": {
+                "Strange": {},
+                "Unique": {},
+                "Unique Paints": {}
+            },
+            "Created Items": {
+                "Strange": {},
+                "Unique": {},
+                "Unique Paints": {}
+            }
+        }
+    }
+    if ("10" in IHD_events_type_sorted) {
+        for (const [key, value] of Object.entries(IHD_events_type_sorted["10"])) {
+            var type = "Item Grade Trade-Ups";
+            if (IHD_items_lost_attr in value) {
+                if (Object.keys(value[IHD_items_lost_attr]).length === 5) {
+                    type = "Stat Clocks";
+                } else if (Object.keys(value[IHD_items_lost_attr]).length < 10) {
+                    console.log("Trade up only had " + Object.keys(value[IHD_items_lost_attr]).length + " items instead of expected 10.");
+                    console.log(value["time"]);
+                }
+
+                for (const [key2, value2] of Object.entries(value[IHD_items_lost_attr])) {
+                    if ("Quality" in value2) {
+                        var quality = value2["Quality"];
+                        if (quality === "6") {
+                            quality = "Unique";
+                        } else if (quality === "11") {
+                            quality = "Strange";
+                        } else if (quality === "15") {
+                            quality = "Unique Paints";
+                        } else {
+                            console.log("Somehow quality for tradeup was not unique or strange and was instead: " + quality);
+                            if (!("Errors" in IHD_tradeup_obj[type]["Used Items"])) {
+                                IHD_tradeup_obj[type]["Used Items"]["Errors"] = {};
+                            }
+                            quality = "Errors";
+                        }
+                        if ("name" in value2) {
+                            var name = IHD_inverted_dictionary[value2["name"]];
+                            IHD_stats_add_item_to_obj(IHD_tradeup_obj, name, type, "Used Items", quality);
+                        }
+                    } else {
+                        if ("name" in value2) {
+                            name = IHD_inverted_dictionary[value2["name"]];
+                            IHD_stats_add_item_to_obj(IHD_tradeup_obj, name, type, "Used Items");
+                        }
+                    }
+                }
+            }
+            if (IHD_items_gained_attr in value) {
+                for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
+                    if ("Quality" in value2) {
+                        quality = value2["Quality"];
+                        if (quality === "6") {
+                            quality = "Unique";
+                        } else if (quality === "11") {
+                            quality = "Strange";
+                        } else if (quality === "15") {
+                            quality = "Unique Paints";
+                        } else {
+                            console.log("Somehow quality for tradeup was not unique or strange and was instead: " + quality);
+                            if (!("Errors" in IHD_tradeup_obj[type]["Created Items"])) {
+                                IHD_tradeup_obj[type]["Created Items"]["Errors"] = {};
+                            }
+                            quality = "Errors";
+                        }
+                        if ("name" in value2) {
+                            name = IHD_inverted_dictionary[value2["name"]];
+                            if (type === "Stat Clocks") {
+                                IHD_stats_add_item_to_obj(IHD_tradeup_obj, name, type, "Created Items");
+                            } else {
+                                IHD_stats_add_item_to_obj(IHD_tradeup_obj, name, type, "Created Items", quality);
+                            }
+                        }
+                    } else {
+                        if ("name" in value2) {
+                            name = IHD_inverted_dictionary[value2["name"]];
+                            IHD_stats_add_item_to_obj(IHD_tradeup_obj, name, type, "Created Items");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    document.getElementById("IHD_stats_div").innerHTML += "<br><div class=\"mvm\"><h2>Trade-Ups</h2></div>" + IHD_stats_obj_to_html(IHD_tradeup_obj)[0] + "<br>";
+
+}
 
 //Store purchases report
 function IHD_mannco_purchases_report() {
@@ -922,7 +1026,6 @@ function IHD_mannco_purchases_report() {
         "Packages": {},
         "Other": {}
     }
-    var i = 0;
     if ("9" in IHD_events_type_sorted) {
         for (const [key, value] of Object.entries(IHD_events_type_sorted["9"])) {
             if (IHD_items_gained_attr in value) {
@@ -960,7 +1063,6 @@ function IHD_deleted_report() {
         "Weapons": {},
         "Other Deleted Items": {}
     }
-    var i = 0;
     if ("13" in IHD_events_type_sorted) {
         for (const [key, value] of Object.entries(IHD_events_type_sorted["13"])) {
             if (IHD_items_lost_attr in value) {
@@ -983,11 +1085,13 @@ function IHD_deleted_report() {
 }
 
 //Used items report
+//Includes spellbook pages used (event 46)
 function IHD_used_report() {
     var IHD_used_obj = {
-        "Used Items": {}
+        "Used Items": {
+            "Spellbook Pages Used": 0
+        }
     }
-    var i = 0;
     if ("21" in IHD_events_type_sorted) {
         for (const [key, value] of Object.entries(IHD_events_type_sorted["21"])) {
             if (IHD_items_lost_attr in value) {
@@ -1000,6 +1104,13 @@ function IHD_used_report() {
             }
             if (IHD_items_gained_attr in value) {
                 console.log(value[IHD_items_gained_attr]);
+            }
+        }
+    }
+    if ("46" in IHD_events_type_sorted) { //Track spellbook pages in here too
+        for (const [key, value] of Object.entries(IHD_events_type_sorted["46"])) {
+            if (IHD_items_lost_attr in value) {
+                IHD_used_obj["Used Items"]["Spellbook Pages Used"]++;
             }
         }
     }
@@ -1020,7 +1131,6 @@ function IHD_found_report() {
         "Chemistry Sets": {},
         "Other": {}
     }
-    var i = 0;
     if ("37" in IHD_events_type_sorted) {
         for (const [key, value] of Object.entries(IHD_events_type_sorted["37"])) {
             if (IHD_items_gained_attr in value) {
@@ -1069,7 +1179,6 @@ function IHD_crafted_report() {
             "Weapons": {}
         }
     }
-    var i = 0;
     if ("42" in IHD_events_type_sorted) {
         for (const [key, value] of Object.entries(IHD_events_type_sorted["42"])) {
             if (IHD_items_lost_attr in value) {
@@ -1116,11 +1225,9 @@ function IHD_earned_report() {
     var IHD_earned_obj = {
         "Earned": {}
     }
-    var i = 0;
     if ("43" in IHD_events_type_sorted) {
         for (const [key, value] of Object.entries(IHD_events_type_sorted["43"])) {
             if (IHD_items_gained_attr in value) {
-                var crate_type = IHD_get_crate_name(value[IHD_items_gained_attr], false);
                 for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
                     if ("name" in value2) {
                         var name = IHD_inverted_dictionary[value2["name"]];
@@ -1132,6 +1239,28 @@ function IHD_earned_report() {
     }
 
     document.getElementById("IHD_stats_div").innerHTML += "<br><div class=\"mvm\"><h2>Earned Items</h2></div>" + IHD_stats_obj_to_html(IHD_earned_obj)[0] + "<br>";
+
+}
+
+//Blood money report
+function IHD_blood_money_report() {
+    var IHD_blood_obj = {
+        "Blood Money Purchases": {}
+    }
+    if ("56" in IHD_events_type_sorted) {
+        for (const [key, value] of Object.entries(IHD_events_type_sorted["56"])) {
+            if (IHD_items_gained_attr in value) {
+                for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
+                    if ("name" in value2) {
+                        var name = IHD_inverted_dictionary[value2["name"]];
+                        IHD_stats_add_item_to_obj(IHD_blood_obj, name, "Blood Money Purchases");
+                    }
+                }
+            }
+        }
+    }
+
+    document.getElementById("IHD_stats_div").innerHTML += "<br><div class=\"mvm\"><h2>Blood Money Purchases</h2></div>" + IHD_stats_obj_to_html(IHD_blood_obj)[0] + "<br>";
 
 }
 
@@ -1175,7 +1304,8 @@ var IHD_ignore_key_totals = {
     "Total Uniques": 1,
     "Total Unusuals": 1,
     "Total Decorated Skins": 1,
-    "Total Bonus Items": 1
+    "Total Bonus Items": 1,
+    "Used Items": 1 //Trade ups and crafting
 }
 function IHD_stats_obj_to_html(obj) {
     var html = "";
