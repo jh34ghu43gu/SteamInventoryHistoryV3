@@ -55,6 +55,9 @@
    * Would like to add more stats to trade-ups in the future such as which slot(s) were selected. This would require some dictionary of skins in X collection so massive CBA on it rn.
  * Should be the final events that needed tracking.
 
+ ### 0.6.8
+ * Fix issue #5
+
  ## 0.5
  * Previous downloads can be read into the script before starting a download.
    * Incompatable with any downloads prior to version 0.4.6.

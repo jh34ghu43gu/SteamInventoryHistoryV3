@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.6.7
+// @version      0.6.8
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -11,6 +11,8 @@
 // @grant        GM_getValue
 // ==/UserScript==
 
+//TODO store start and end cursors in the file
+//TODO add tour numbers to when an aussie was dropped
 
 //NOTE: Need a breadbox opening from someone else to make sure gifted unboxes from that are recorded right, when the data display part is done
 console.log("Tf2 Inventory History Downloader Script is active.");
@@ -1632,8 +1634,8 @@ function IHD_itemsToJson(itemDiv, event) {
     var i = 0;
     Array.from(itemDiv.getElementsByClassName("history_item")).forEach((el) => {
         var IHD_item_json = {};
-        var IHD_item_classid = el.getAttribute("data-classid")
-        var IHD_item_instanceid = el.getAttribute("data-instanceid")
+        var IHD_item_classid = el.getAttribute("data-classid");
+        var IHD_item_instanceid = el.getAttribute("data-instanceid");
         var IHD_item_combinedID = IHD_item_classid + "_" + IHD_item_instanceid;
         if (IHD_filter_ids.checked && el.getAttribute("href")) {
             //Don't care about original ids OR we do care and the event is on the list of events that creates items
@@ -1721,7 +1723,7 @@ function IHD_itemsToJson(itemDiv, event) {
                             IHD_item_json[IHD_items_type_attr] = IHD_dictionary[type];
                         } else {
                             IHD_dictionary[type] = IHD_dict_counter;
-                            IHD_inverted_dictionary[IHD_dict_counter] = value;
+                            IHD_inverted_dictionary[IHD_dict_counter] = type;
                             IHD_item_json[IHD_items_type_attr] = IHD_dict_counter;
                             IHD_dict_counter++;
                         }
