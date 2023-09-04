@@ -58,6 +58,15 @@
  ### 0.6.8
  * Fix issue #5
 
+ ### 0.6.9
+ * Fix issue #6
+   * All bonus items should be properly accounted for and halloween cosmetics have their own count stat.
+ * Cases have a graded item totals
+   * Currently using arrays, will update in the future to have downloads save the grade as a tag (issue #7).
+ * File downloads save a start and end cursor which is used to cross check duplicate entries in multiple files 
+   * IHD_duplicate_entry_checker isn't complete iirc.
+ * Nice
+
  ## 0.5
  * Previous downloads can be read into the script before starting a download.
    * Incompatable with any downloads prior to version 0.4.6.

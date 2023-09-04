@@ -1,13 +1,14 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.6.8
+// @version      0.6.9
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
 // @icon         https://wiki.teamfortress.com/wiki/Mann_Co._Supply_Crate_Key#/media/File:Backpack_Mann_Co._Supply_Crate_Key.png
 // @require      http://code.jquery.com/jquery-latest.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
+// @require      https://raw.githubusercontent.com/lodash/lodash/4.17.15-npm/core.js
 // @grant        GM_getValue
 // ==/UserScript==
 
@@ -25,6 +26,7 @@ var IHD_obj_counter = 0;
 var IHD_dict_counter = 1; //Logic errors when reading if we start at 0 (inverse dictionary can't write a 0 key?)
 var IHD_skipped_asset_counter = 0;
 var IHD_ready_to_load = true;
+var IHD_start_cursor;
 var IHD_prev_cursor;
 var IHD_retry_counter = 0;
 var IHD_max_retries = 100; //Retry on errors (not 429) this many times.
@@ -33,6 +35,8 @@ var IHD_items_gained_attr = "Gained";
 var IHD_items_lost_attr = "Lost";
 var IHD_items_hold_attr = "items_on_hold";
 var IHD_items_type_attr = "Type";
+var IHD_start_cursor_attr = "starting_cursor";
+var IHD_end_cursor_attr = "ending_cursor";
 
 //Valve decided to make some item uses a multiple-event thing so these vars will help us track that between event calls
 var IHD_used_temp_obj = {};
@@ -378,6 +382,9 @@ function IHD_addButtons(jNode) {
         IHD_filter_original_ids.disabled = true;
         IHD_checkForCursorInput();
 
+        if (!IHD_start_cursor) {
+            IHD_start_cursor = g_historyCursor;
+        }
         IHD_loop = setInterval(() => {
             if (IHD_ready_to_load) {
                 IHD_ready_to_load = false;
@@ -415,6 +422,7 @@ async function IHD_read_files() {
 }
 
 function IHD_read_file_objects(objects) {
+    var IHD_duplicate_times = {};
     for (var i = 0; i < Array.from(objects).length; i++) {
         var IHD_file_json_obj = Array.from(objects)[i];
         //First file is very simple; just copying everything and making sure to incriment our values accordingly
@@ -423,12 +431,76 @@ function IHD_read_file_objects(objects) {
             IHD_obj_counter = Object.keys(IHD_json_object).length;
             IHD_dictionary = invertDictionary(IHD_file_json_obj.dictionary);
             IHD_dict_counter = Object.keys(IHD_file_json_obj.dictionary).length + 1;
+            //Get cursors; backwards compatible checks (assuming attr names don't change)
+            if (IHD_start_cursor_attr in IHD_file_json_obj) {
+                IHD_start_cursor = IHD_file_json_obj[IHD_start_cursor_attr];
+            }
+            if (IHD_end_cursor_attr in IHD_file_json_obj) {
+                IHD_prev_cursor = IHD_file_json_obj[IHD_end_cursor_attr];
+            }
             delete IHD_json_object["dictionary"];
         } else { //2nd+ files need to change our dictionary item values and also our obj counter incriments
             var IHD_file_dictionary = IHD_file_json_obj.dictionary;
+            //Check for cursor crossing; take oldest ending cursor and earliest starting cursor
+            var duplicates = false;
+            //TODO this probably has an edge case in it
+            if (IHD_start_cursor_attr in IHD_file_json_obj && IHD_end_cursor_attr in IHD_file_json_obj) {
+                if (IHD_start_cursor && IHD_prev_cursor) {
+                    if (IHD_file_json_obj[IHD_start_cursor_attr].time > IHD_start_cursor.time ||//This file has a starting cursor before our previous files
+                        (IHD_file_json_obj[IHD_start_cursor_attr].time === IHD_start_cursor.time
+                            && IHD_file_json_obj[IHD_start_cursor_attr].time_frac > IHD_start_cursor.time_frac)
+                    ) {
+                        if (IHD_file_json_obj[IHD_end_cursor_attr].time < IHD_start_cursor.time ||
+                            (IHD_file_json_obj[IHD_end_cursor_attr].time === IHD_start_cursor.time
+                                && IHD_file_json_obj[IHD_end_cursor_attr].time_frac < IHD_start_cursor.time_frac)
+                        ) {
+                            //This file's end time is older than the starting from previous files so there is probably duplicate info
+                            duplicates = true;
+                        }
+                        //Starting cursor should be changed to the earlier one
+                        IHD_start_cursor = IHD_file_json_obj[IHD_start_cursor_attr];
+                    } else if (IHD_file_json_obj[IHD_start_cursor_attr].time > IHD_prev_cursor.time) { //TODO here
+                        //This file's start is newer than the previous file's end so there is probably duplicate info
+                        duplicates = true;
+                    }
+                    //Prev cursor should be changed to the older one if applicable
+                    if (IHD_file_json_obj[IHD_end_cursor_attr].time < IHD_prev_cursor.time) { //TODO and here
+                        IHD_prev_cursor = IHD_file_json_obj[IHD_end_cursor_attr];
+                    }
+                } else {
+                    if (!IHD_start_cursor) {//First/previous file(s) didn't set our starting cursor so just take this one
+                        IHD_start_cursor = IHD_file_json_obj[IHD_start_cursor_attr];
+                    }
+                    if (!IHD_prev_cursor) { //First/previous file(s) didn't set our ending cursor so just take this one
+                        IHD_prev_cursor = IHD_file_json_obj[IHD_end_cursor_attr];
+                    }
+                }
+            }
+            if (duplicates) {
+                //Setup an object that sorts objects by times for quick checking against duplicates
+                for (var time_count = 0; time_count < Object.keys(IHD_json_object); time_count++) {
+                    if (!(Object.keys(IHD_json_object)[time_count] === "dictionary")) {
+                        IHD_duplicate_times[IHD_json_object[time_count].time] = time_count;
+                        IHD_duplicate_times[IHD_json_object[time_count].time][time_count] = IHD_json_object[time_count];
+                    }
+                }
+                console.log(IHD_duplicate_times);
+            }
             for (var m = 0; m < Object.keys(IHD_file_json_obj).length; m++) {
                 if (!(Object.keys(IHD_file_json_obj)[m] === "dictionary")) {
                     IHD_event = IHD_file_json_obj[m];
+                    if (duplicates && IHD_event.time in IHD_duplicate_times) {
+                        var dupe = false;
+                        for (var dCheck in IHD_duplicate_times[IHD_event.time]) {
+                            if (IHD_duplicate_entry_checker(IHD_event, dCheck)) {
+                                dupe = true;
+                                break;
+                            }
+                        }
+                        if (dupe) {
+                            continue;
+                        }
+                    }
                     IHD_new_event = {};
                     for (var k = 0; k < Object.keys(IHD_event).length; k++) {
                         var key = Object.keys(IHD_event)[k];
@@ -474,6 +546,23 @@ function IHD_file_items_handler(items, dictionary) {
         IHD_temp_items[i] = IHD_temp_item;
     }
     return IHD_temp_items;
+}
+//Checks if 2 entries are the same
+//Although we could use _.isEqual() from the start,
+//SCM events cannot be distinguished from each other if they happen in the same minute and should always be treated as non-dupes
+//(And presumibly, because we know ahead of time that the 'time' attribute is the most likely to be different,
+//  we probably will save a bit of time over that method)
+function IHD_duplicate_entry_checker(entry1, entry2) {
+    if (entry1.time === entry2.time) {
+        if (entry1.event === entry2.event) {
+            //SCM events that happen at the same time are practically indistinguishable from each other if they have the same item 
+            //so just skip that check and assume they are different (0-4 are SCM events)
+            if (entry1.event > 4) {
+                return _.isEqual(entry1, entry2);
+            }
+        }
+    }
+    return false;
 }
 //Leaving file reading section
 
@@ -772,8 +861,15 @@ function IHD_unbox_stats_report() {
                 "Paint": {},
                 "Strange Parts": {},
                 "Tools": {},
-                "Unusualifiers": {}
+                "Unusualifiers": {},
+                "Halloween Bonus": {}
                 //Tickets, stat transfer tools
+            },
+            "Total Graded Items": {
+                "Elite": 0,
+                "Assassin": 0,
+                "Commando": 0,
+                "Mercenary": 0
             },
             "cosmetic": {
                 "Uniques": 0,
@@ -783,8 +879,15 @@ function IHD_unbox_stats_report() {
                     "Paint": {},
                     "Strange Parts": {},
                     "Tools": {},
-                    "Unusualifiers": {}
+                    "Unusualifiers": {},
+                    "Halloween Bonus": {}
                     //Tickets, stat transfer tools
+                },
+                "Graded Items": {
+                    "Elite": 0,
+                    "Assassin": 0,
+                    "Commando": 0,
+                    "Mercenary": 0
                 }
             },
             "war paints": {
@@ -798,6 +901,12 @@ function IHD_unbox_stats_report() {
                     "Tools": {},
                     "Unusualifiers": {}
                     //Tickets, stat transfer tools
+                },
+                "Graded Items": {
+                    "Elite": 0,
+                    "Assassin": 0,
+                    "Commando": 0,
+                    "Mercenary": 0
                 }
             },
             "weapon skins": { //Different from war paints
@@ -811,7 +920,13 @@ function IHD_unbox_stats_report() {
                     "Tools": {},
                     "Unusualifiers": {}
                     //Tickets, stat transfer tools
-                }
+                },
+                "Graded Items": {
+                    "Elite": 0,
+                    "Assassin": 0,
+                    "Commando": 0,
+                    "Mercenary": 0
+                },
             }
         },
         "crates": {
@@ -846,7 +961,7 @@ function IHD_unbox_stats_report() {
                                 var bonus = true;
                                 //Add the names
                                 if (crate_type.length > 2) {
-                                    //Bonus items
+                                    //Bonus items 
                                     if (IHD_paint_list.includes(name)) { //Paint
                                         IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", "Total Bonus Items", "Paint");
                                         IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", crate_type[1], "Bonus Items", "Paint");
@@ -859,11 +974,59 @@ function IHD_unbox_stats_report() {
                                     } else if (name.includes("Unusualifier")) { //Unusualifiers
                                         IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", "Total Bonus Items", "Unusualifiers");
                                         IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", crate_type[1], "Bonus Items", "Unusualifiers");
+                                    } else if (IHD_Halloween_Bonus.includes(name) || IHD_Halloween_Bonus.includes(name.replace("The ", ""))) { //Bonus Halloween Cosmetics
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", "Total Bonus Items", "Halloween Bonus");
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", crate_type[1], "Bonus Items", "Halloween Bonus");
                                     } else if (name === "Tour of Duty Ticket" || name === "Strange Count Transfer Tool") { //ToD and stat transfer
                                         IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", "Total Bonus Items");
                                         IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", crate_type[1], "Bonus Items");
                                     } else { //Not a bonus item
                                         IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", crate_type[1], [crate_type[2]]);
+                                        var foundGrade = false;
+                                        IHD_ELITES.forEach(str => {
+                                            if (name.includes(str) || name.includes(str.replace("The ", ""))) {
+                                                IHD_unbox_obj["cases"]["Total Graded Items"]["Elite"]++;
+                                                IHD_unbox_obj["cases"][crate_type[1]]["Graded Items"]["Elite"]++;
+                                                foundGrade = true;
+                                                return;
+                                            }
+                                        });
+                                        IHD_ASSASSINS.forEach(str => {
+                                            if (foundGrade) {
+                                                return;
+                                            }
+                                            if (name.includes(str) || name.includes(str.replace("The ", ""))) {
+                                                IHD_unbox_obj["cases"]["Total Graded Items"]["Assassin"]++;
+                                                IHD_unbox_obj["cases"][crate_type[1]]["Graded Items"]["Assassin"]++;
+                                                foundGrade = true;
+                                                return;
+                                            }
+                                        });
+                                        IHD_COMMANDOS.forEach(str => {
+                                            if (foundGrade) {
+                                                return;
+                                            }
+                                            if (name.includes(str) || name.includes(str.replace("The ", ""))) {
+                                                IHD_unbox_obj["cases"]["Total Graded Items"]["Commando"]++;
+                                                IHD_unbox_obj["cases"][crate_type[1]]["Graded Items"]["Commando"]++;
+                                                foundGrade = true;
+                                                return;
+                                            }
+                                        });
+                                        IHD_MERCS.forEach(str => {
+                                            if (foundGrade) {
+                                                return;
+                                            }
+                                            if (name.includes(str) || name.includes(str.replace("The ", ""))) {
+                                                IHD_unbox_obj["cases"]["Total Graded Items"]["Mercenary"]++;
+                                                IHD_unbox_obj["cases"][crate_type[1]]["Graded Items"]["Mercenary"]++;
+                                                foundGrade = true;
+                                                return;
+                                            }
+                                        });
+                                        if (!foundGrade) {
+                                            console.log("Couldn't find graded item: " + name + "'s grade.");
+                                        }
                                         bonus = false;
                                     }
                                 } else {
@@ -1302,11 +1465,13 @@ var IHD_ignore_key_totals = {
     "Unusuals": 1,
     "Decorated Skins": 1,
     "Bonus Items": 1,
+    "Graded Items": 1,
     "Total Stranges": 1,
     "Total Uniques": 1,
     "Total Unusuals": 1,
     "Total Decorated Skins": 1,
     "Total Bonus Items": 1,
+    "Total Graded Items": 1,
     "Used Items": 1 //Trade ups and crafting
 }
 function IHD_stats_obj_to_html(obj) {
@@ -1354,6 +1519,12 @@ function IHD_enableButton() {
     IHD_stats_button.disabled = false;
     IHD_ready_to_load = true;
     IHD_json_object.dictionary = IHD_inverted_dictionary;
+    IHD_json_object[IHD_start_cursor_attr] = IHD_start_cursor;
+    if (IHD_prev_cursor) {
+        IHD_json_object[IHD_end_cursor_attr] = IHD_prev_cursor;
+    } else {
+        IHD_json_object[IHD_end_cursor_attr] = 0;
+    }
     IHD_download(JSON.stringify(IHD_json_object), 'inventory_history.json', 'application/json');
 }
 
@@ -1979,6 +2150,9 @@ const IHD_tool_list = [
     "Description Tag",
     "Decal Tool",
     "Giftapult",
+    "Backpack Expander",
+    "The Festivizer",
+    "Gift Wrap",
     "Dueling Mini-Game",
     "Enchantment: Eternaween"
 ];
@@ -2468,4 +2642,785 @@ const IHD_hat_list = [
     "Tipped Lid",
     "Crown of the Old Kingdom",
     "Tomb Readers"
+];
+
+var IHD_Halloween_Bonus = [
+    "Pyro Shark",
+    "Avian Amante",
+    "Eingineer",
+    "Remorseless Raptor",
+    "Wild Whip",
+    "Misha's Maw",
+    "Cabinet Mann",
+    "Fire Breather",
+    "Magical Mount",
+    "Pony Express",
+    "War Blunder",
+    "Grounded Flyboy",
+    "Rolfe Copter",
+    "Pug Mug",
+    "Treehugger",
+    "Mannvich",
+    "Crocodile Mun-Dee",
+    "Scoper's Scales",
+    "Dell in the Shell",
+    "A Shell of a Mann",
+    "Poopy Doe",
+    "Batter's Beak",
+    "War Dog",
+    "Miami Rooster",
+    "Computron 5000",
+    "Corpse Carrier",
+    "Aerobatics Demonstrator",
+    "Final Frontier Freighter",
+    "Hovering Hotshot"
+]
+
+var IHD_ELITES = [
+    "Corona Australis",
+    "Sucker Slug",
+    "Sand Cannon Rocket Launcher",
+    "Red Rock Roscoe Pistol",
+    "Park Pigmented War Paint",
+    "Liquid Asset Stickybomb Launcher",
+    "Thunderbolt Sniper Rifle",
+    "Killer Bee Scattergun",
+    "Warhawk Rocket Launcher",
+    "Class Crown",
+    "Combustible Cutie",
+    "Potassium Bonnet",
+    "Captain Cardbeard Cutthroat",
+    "Arthropod's Aspect",
+    "Catastrophic Companions",
+    "Rainbow Grenade Launcher",
+    "Rainbow Sniper Rifle",
+    "Rainbow Flame Thrower",
+    "Miami Element War Paint",
+    "Batsaber",
+    "The Bomber Knight",
+    "The Snowmann",
+    "Trapper's Flap",
+    "Festive Rack",
+    "Oh Deer!",
+    "Towering Pile of Presents",
+    "Winterland Wrapped War Paint",
+    "Candy Crown",
+    "Misfortunate War Paint",
+    "Sky Stallion War Paint",
+    "Ballooniphones",
+    "Starlight Serenity War Paint",
+    "Bread Heads",
+    "Sacred Slayer War Paint",
+    "Cranium Cooler",
+    "Full Metal Helmet",
+    "Robin Walkers",
+    "Spectrum Splattered War Paint",
+    "The Aztec Warrior",
+    "The Slithering Scarf",
+    "Texas Toast",
+    "The Peacebreaker",
+    "Rocko",
+    "The Decorated Veteran",
+    "The War Eagle",
+    "Quizzical Quetzal",
+    "Hungover Hero",
+    "Balloonihoodie",
+    "Pyr'o Lantern",
+    "Mister Bones",
+    "Balloonicorpse",
+    "All Hallows' Hatte",
+    "The Lightning Lid",
+    "Flash of Inspiration",
+    "Propaniac",
+    "The Onimann",
+    "The Dead Head",
+    "Bedouin Bandana",
+    "Breadcrab",
+    "Hypno-Eyes",
+    "Hypno-eyes",
+    "Electroshocked War Paint",
+    "Towering Patch of Pumpkins",
+    "Lucky Cat Hat",
+    "Fire Glazed War Paint"
+];
+
+var IHD_ASSASSINS = [
+    "The Giger Counter",
+    "Starduster",
+    "Psychedelic Slugger Revolver",
+    "Purple Range Sniper Rifle",
+    "Sudden Flurry Stickybomb Launcher",
+    "Sax Waxed War Paint",
+    "Yeti Coated War Paint",
+    "Current Event Scattergun",
+    "Pink Elephant Stickybomb Launcher",
+    "Shell Shocker Rocket Launcher",
+    "Warhawk Grenade Launcher",
+    "Red Bear Shotgun",
+    "Warhawk Flame Thrower",
+    "Pestering Jester",
+    "Mo'Horn",
+    "Burly Beast",
+    "El Duderino",
+    "Sheriff's Stetson",
+    "Bruce's Bonnet",
+    "Crusader's Getup",
+    "Grim Tweeter",
+    "Dead'er Alive",
+    "Balloonicorn Sniper Rifle",
+    "Sweet Dreams Grenade Launcher",
+    "Sweet Dreams Stickybomb Launcher",
+    "Balloonicorn Flame Thrower",
+    "Jazzy War Paint",
+    "Mosaic War Paint",
+    "Space Hamster Hammy",
+    "Taunt: Burstchester",
+    "Pyro the Flamedeer",
+    "Snowwing",
+    "The Head Prize",
+    "Motley Sleeves",
+    "Battle Bear",
+    "Colonel Kringle",
+    "The Wooly Pulli",
+    "Merry Cone",
+    "Hat Chocolate",
+    "Jolly Jester",
+    "Towering Pillar of Beanies",
+    "Helm Helm",
+    "The Round-A-Bout",
+    "Smissmas Village War Paint",
+    "Smissmas Camo War Paint",
+    "Smissmas Saxton",
+    "Public Speaker",
+    "Provisions Cap",
+    "Party Phantoms War Paint",
+    "Broken Bones War Paint",
+    "Deadly Dragon War Paint",
+    "Business Class War Paint",
+    "Fast Food",
+    "The Panisher",
+    "Crustaceous Cowl",
+    "Saccharine Striped War Paint",
+    "Frosty Delivery War Paint",
+    "The Dumb Bell",
+    "The Polar Pal",
+    "Millennial Mercenary",
+    "Bonzo Gnawed War Paint",
+    "Ghoul Blaster War Paint",
+    "The Glorious Gambeson",
+    "The Flame Warrior",
+    "Über-Wear",
+    "Uber-Wear",
+    "Cranium Cover",
+    "Brother Mann",
+    "Private Maggot Muncher",
+    "The Cold Case",
+    "The Frag Proof Fragger",
+    "Pumpkin Pied War Paint",
+    "Mummified Mimic War Paint",
+    "Helldriver War Paint",
+    "Bananades",
+    "Sacrificial Stone",
+    "Jungle Wreath",
+    "Bobby Bonnet",
+    "The Bare Necessities",
+    "The Fiery Phoenix",
+    "Unforgiven Glory",
+    "Soda Cap",
+    "Monsieur Grenouille",
+    "Head Banger",
+    "Night Vision Gawkers",
+    "Kazan Karategi",
+    "Jungle Jersey",
+    "Tropical Toad",
+    "The Aztec Aggressor",
+    "The Cat's Pajamas",
+    "The Handsome Hitman",
+    "Coldfront Carapace",
+    "Head of the Dead",
+    "Elizabeth the Third",
+    "The Trick Stabber",
+    "Racc Mann",
+    "Misfortune Fedora",
+    "Wavefinder",
+    "The Fire Tooth",
+    "Wrap-A-Khamon",
+    "Legendary Lid",
+    "Guilden Guardian",
+    "Plumber's Cap",
+    "Road Rage",
+    "Alcoholic Automaton",
+    "Cranial Cowl",
+    "Victorian Villainy",
+    "Dad Duds",
+    "The Dayjogger",
+    "Smoking Jacket",
+    "Loaf Loafers",
+    "Flamehawk",
+    "Hawk Warrior",
+    "Tumor Toasted War Paint",
+    "Ghost Town War Paint",
+    "The Bone Cone",
+    "Gruesome Gourd",
+    "Wandering Wraith",
+    "Terror-antula",
+    "Defragmenting Hard Hat 17%",
+    "Mr. Quackers",
+    "A Well Wrapped Hat",
+    "Freedom Wrapped War Paint",
+    "Dream Piped War Paint",
+    "Bonk Varnished War Paint"
+];
+
+var IHD_COMMANDOS = [
+    "Captain Space Mann",
+    "The Shooting Star",
+    "Rocket Operator",
+    "Night Terror Scattergun",
+    "Carpet Bomber Stickybomb Launcher",
+    "Woodland Warrior Rocket Launcher",
+    "Wrapped Reviver Medi Gun",
+    "Macaw Masked War Paint",
+    "Croc Dusted War Paint",
+    "Piña Polished War Paint",
+    "Flash Fryer Flame Thrower",
+    "Spark of Life Medi Gun",
+    "Dead Reckoner Revolver",
+    "Black Dahlia Pistol",
+    "Sandstone Special Pistol",
+    "Butcher Bird Minigun",
+    "Airwolf Sniper Rifle",
+    "Blitzkrieg Stickybomb Launcher",
+    "Corsair Medi Gun",
+    "Airwolf Knife",
+    "The Toadstool Topper",
+    "Big Topper",
+    "Heavy Tourism",
+    "The Corpus Christi Cranium",
+    "Spirit of the Bombing Past",
+    "Lil' Bitey",
+    "The Physician's Protector",
+    "Outta Sight",
+    "Outta' Sight",
+    "Fortunate Son",
+    "White Russian",
+    "El Caballero",
+    "B'aaarrgh-n-Bicorne",
+    "Iron Lung",
+    "Neptune's Nightmare",
+    "Death Racer's Helmet",
+    "Duck Billed Hatypus",
+    "Mister Cuddles Minigun",
+    "Blue Mew Knife",
+    "Blue Mew Pistol",
+    "Blue Mew Rocket Launcher",
+    "Blue Mew Scattergun",
+    "Shot to Hell Scattergun",
+    "Torqued to Hell Wrench",
+    "Cosmic Calamity War Paint",
+    "Hana War Paint",
+    "Uranium War Paint",
+    "Neo Tokyo War Paint",
+    "The C.A.P.P.E.R",
+    "Phononaut",
+    "Jupiter Jetpack",
+    "Flammable Favor",
+    "The Electric Twanger",
+    "Bomb Beanie",
+    "The Woolen Warmer",
+    "Socked and Loaded",
+    "Infiltrator's Insulation",
+    "Frostbite Bonnet",
+    "Firebrand",
+    "Plaid Lad",
+    "Underminer's Overcoat",
+    "Ol' Reliable",
+    "The Cool Warm Sweater",
+    "Seasonal Spring",
+    "Reindoonihorns",
+    "Elf Ignition",
+    "Train of Thought",
+    "Seasonal Employee",
+    "Elf-Made Bandanna",
+    "Blitzen Bowl",
+    "The Smissmas Sorcerer",
+    "Professional's Pom-Pom",
+    "BedBug Protection",
+    "SandMann's Brush",
+    "Night Ward",
+    "Frost Ornamented War Paint",
+    "Snow Covered War Paint",
+    "Sleighin' Style War Paint",
+    "Discovision",
+    "Winter Wrap Up",
+    "Globetrotter",
+    "Telefragger Toque",
+    "The Mislaid Sweater",
+    "Swashbuckled War Paint",
+    "Neon-ween War Paint",
+    "Polter-Guised War Paint",
+    "Necromanced War Paint",
+    "Steel Brushed War Paint",
+    "Warborn War Paint",
+    "Mechanized Monster War Paint",
+    "Snack Stack",
+    "Water Waders",
+    "Meal Dealer",
+    "Crocodile Dandy",
+    "The Sightliner",
+    "Cookie Fortress War Paint",
+    "Frozen Aurora War Paint",
+    "Elfin Enamel War Paint",
+    "Smissmas Spycrabs War Paint",
+    "The Puggyback",
+    "Harry",
+    "Pocket Admin",
+    "Cool Capuchon",
+    "Miser's Muttonchops",
+    "Metalized Soul War Paint",
+    "Pumpkin Plastered War Paint",
+    "Chilly Autumn War Paint",
+    "Cleaner's Cap",
+    "The Shrapnel Shell",
+    "Hog Heels",
+    "Close Quarters Cover",
+    "The Soho Sleuth",
+    "Hazard Handler",
+    "Preventative Measure",
+    "Prohibition Opposition",
+    "Starboard Crusader",
+    "Scourge of the Sky",
+    "Veteran's Attire",
+    "The Burning Question",
+    "Aristotle",
+    "Blizzard Britches",
+    "Punk's Pomp",
+    "Sweet Toothed War Paint",
+    "Crawlspace Critters War Paint",
+    "Raving Dead War Paint",
+    "Spider's Cluster War Paint",
+    "The Crit Cloak",
+    "Pocket Saxton",
+    "The Hot Huaraches",
+    "Feathered Fiend",
+    "The Conspicuous Camouflage",
+    "Spawn Camper",
+    "Backbreaker's Skullcracker",
+    "Kapitan's Kaftan",
+    "Wagga Wagga Wear",
+    "Speedy Scoundrel",
+    "Dynamite Abs",
+    "Fizzy Pharmacist",
+    "Squatter's Right",
+    "Tropical Camo",
+    "The Hawaiian Hangover",
+    "The Detective",
+    "The Lawnmaker",
+    "The Ripped Rider",
+    "Boston Brain Bucket",
+    "The Hunter in Darkness",
+    "D-eye-monds",
+    "Transparent Trousers",
+    "The Croaking Hazard",
+    "Rifleman's Regalia",
+    "Sledder's Sidekick",
+    "Burning Beanie",
+    "Coldfront Commander",
+    "Wild West Whiskers",
+    "Melody of Misery",
+    "Madmann's Muzzle",
+    "The Horrible Horns",
+    "Skullbrero",
+    "Soviet Strongmann",
+    "Voodoo Vizier",
+    "El Zapateador",
+    "Glow from Below",
+    "Gourd Grin",
+    "Sir Pumpkinton",
+    "Impish Ears",
+    "Eye-See-You",
+    "Semi-Tame Trapper's Hat",
+    "Archer's Sterling",
+    "Pocket Pauling",
+    "Messenger's Mail Bag",
+    "Hawk-Eyed Hunter",
+    "Down Under Duster",
+    "Dustbowl Devil",
+    "The Lavish Labwear",
+    "Road Block",
+    "Safety Stripes",
+    "The Masked Fiend",
+    "Headhunter's Brim",
+    "Herald's Helm",
+    "The Lurking Legionnaire",
+    "Gauzed Gaze",
+    "Patriot's Pouches",
+    "The Flatliner",
+    "Breach and Bomb",
+    "Bird's Eye Viewer",
+    "Hazard Headgear",
+    "Tools of the Tourist",
+    "Momma Kiev",
+    "Skull Study War Paint",
+    "Spectral Shimmered War Paint",
+    "Calavera Canvas War Paint",
+    "The Hook, Line, and Thinker",
+    "Second-Head Headwear",
+    "Alakablamicon",
+    "Goalkeeper",
+    "Eyequarium",
+    "Optic Nerve",
+    "The Tank Top",
+    "Gaelic Glutton",
+    "Athenian Attire",
+    "Pyro in Chinatown",
+    "Dressperado",
+    "Aim Assistant",
+    "The Gift Bringer",
+    "Bonk Batter's Backup",
+    "Winter Backup",
+    "The Chill Chullo",
+    "Bank Rolled War Paint",
+    "Kill Covered War Paint",
+    "Pizza Polished War Paint",
+    "Clover Camo'd War Paint"
+];
+
+
+
+var IHD_MERCS = [
+    "Final Frontiersman",
+    "Phobos Filter",
+    "Universal Translator",
+    "Life Support System",
+    "Night Owl Sniper Rifle",
+    "Woodsy Widowmaker SMG",
+    "Backwoods Boomstick Shotgun",
+    "King of the Jungle Minigun",
+    "Masked Mender Medi Gun",
+    "Forest Fire Flame Thrower",
+    "Anodized Aloha War Paint",
+    "Bamboo Brushed War Paint",
+    "Tiger Buffed War Paint",
+    "Leopard Printed War Paint",
+    "Mannana Peeled War Paint",
+    "Brick House Minigun",
+    "Aqua Marine Rocket Launcher",
+    "Low Profile SMG",
+    "Turbine Torcher Flame Thrower",
+    "Lightning Rod Shotgun",
+    "Blitzkrieg Medi Gun",
+    "Blitzkrieg Pistol",
+    "Blitzkrieg Revolver",
+    "Blitzkrieg SMG",
+    "Airwolf Wrench",
+    "Corsair Scattergun",
+    "Butcher Bird Grenade Launcher",
+    "Blitzkrieg Knife",
+    "Colossal Cranium",
+    "Showstopper",
+    "The Cranial Carcharodon",
+    "Spooktacles",
+    "The El Paso Poncho",
+    "The Wide-Brimmed Bandito",
+    "Nasty Norsemann",
+    "The Surgeon's Sidearms",
+    "Mad Mask",
+    "The Wing Mann",
+    "The Vascular Vestment",
+    "Support Spurs",
+    "Lurker's Leathers",
+    "Commissar's Coat",
+    "Wild West Waistcoat",
+    "Flak Jack",
+    "The Rotation Sensation",
+    "The Hellmet",
+    "Prehistoric Pullover",
+    "Thrilling Tracksuit",
+    "Smokey Sombrero",
+    "El Patron",
+    "The Face of Mercy",
+    "Roboot",
+    "B'aaarrgh-n-Britches",
+    "Blue Mew SMG",
+    "Stabbed to Hell Knife",
+    "Shot to Hell Pistol",
+    "Brain Candy Knife",
+    "Brain Candy Minigun",
+    "Brain Candy Pistol",
+    "Brain Candy Rocket Launcher",
+    "Flower Power Medi Gun",
+    "Flower Power Revolver",
+    "Flower Power Scattergun",
+    "Flower Power Shotgun",
+    "Hazard Warning War Paint",
+    "Damascus and Mahogany War Paint",
+    "Dovetailed War Paint",
+    "Alien Tech War Paint",
+    "Cabin Fevered War Paint",
+    "Polar Surprise War Paint",
+    "Bomber Soul War Paint",
+    "Geometrical Teams War Paint",
+    "The Space Diver",
+    "Cadet Visor",
+    "The Graylien",
+    "A Head Full of Hot Air",
+    "Handy Canes",
+    "Elf Esteem",
+    "Packable Provisions",
+    "Brain-Warming Wear",
+    "Reader's Choice",
+    "Santarchimedes",
+    "Sweet Smissmas Sweater",
+    "Oktoberfester",
+    "Crosshair Cardigan",
+    "Bulb Bonnet",
+    "Cold Blooded Coat",
+    "Partizan",
+    "Glasgow Bankroll",
+    "Arctic Mole",
+    "Heavy Heating",
+    "The Soft Hard Hat",
+    "Lumbercap",
+    "El Fiestibrero",
+    "Gnome Dome",
+    "The Giftcrafter",
+    "Brain Cane",
+    "Cozy Catchers",
+    "Ominous Offering",
+    "Festive Frames",
+    "Mooshanka",
+    "Elf Defense",
+    "Festive Cover-Up",
+    "Particulate Protector",
+    "Elf Care Provider",
+    "Jolly Jingler",
+    "Festive Fascinator",
+    "Candy Cantlers",
+    "Reindoonibeanie",
+    "Shoestring Santa",
+    "Festive Flip-Thwomps",
+    "Bear Walker",
+    "The Killing Tree",
+    "Igloo War Paint",
+    "Seriously Snowed War Paint",
+    "Gift Wrapped War Paint",
+    "Alpine War Paint",
+    "Pebbles the Penguin",
+    "Spiky Viking",
+    "Bumble Beenie",
+    "Gingerbread Mann",
+    "Yule Hog",
+    "Glittering Garland",
+    "The Missing Piece",
+    "Citizen Cane",
+    "Pocket-Medes",
+    "Skull Cracked War Paint",
+    "Simple Spirits War Paint",
+    "Potent Poison War Paint",
+    "Searing Souls War Paint",
+    "Kiln and Conquer War Paint",
+    "Sarsaparilla Sprayed War Paint",
+    "Bomb Carrier War Paint",
+    "Team Serviced War Paint",
+    "Pacific Peacemaker War Paint",
+    "Secretly Serviced War Paint",
+    "Manndatory Attire",
+    "Hook, Line, and Cinder",
+    "Two Punch Mann",
+    "Reel Fly Hat",
+    "Fried Batter",
+    "Wild Brim Slouch",
+    "Brim of Fire",
+    "Roaming Roman",
+    "Thousand-Yard Stare",
+    "Gingerbread Winner War Paint",
+    "Peppermint Swirl War Paint",
+    "Gifting Mann's Wrapping Paper War Paint",
+    "Glacial Glazed War Paint",
+    "Snow Globalization War Paint",
+    "Snowflake Swirled War Paint",
+    "Pocket Pardner",
+    "Climbing Commander",
+    "The Crack Pot",
+    "Juvenile's Jumper",
+    "The Catcher's Companion",
+    "Paka Parka",
+    "Snowcapped",
+    "Wise Whiskers",
+    "Mighty Mitre",
+    "Sunriser War Paint",
+    "Health and Hell War Paint",
+    "Health and Hell (Green) War Paint",
+    "Hypergon War Paint",
+    "Cream Corned War Paint",
+    "Brothers in Blues",
+    "The Firestalker",
+    "The Bushman",
+    "Medical Emergency",
+    "Brimmed Bootlegger",
+    "Heavy Metal",
+    "The Blast Bowl",
+    "Cargo Constructor",
+    "Le Professionnel",
+    "Stealth Bomber",
+    "Antarctic Eyewear",
+    "The Head Hedge",
+    "Tsar Platinum",
+    "Sky High Fly Guy",
+    "The Hot Case",
+    "Assassin's Attire",
+    "Wipe Out Wraps",
+    "The Tundra Top",
+    "Spider's Cluster War Paint",
+    "Candy Coated War Paint",
+    "Portal Plastered War Paint",
+    "Death Deluxe War Paint",
+    "Eyestalker War Paint",
+    "Gourdy Green War Paint",
+    "Spider Season War Paint",
+    "Organ-ically Hellraised War Paint",
+    "Fat Man's Field Cap",
+    "Heavy Harness",
+    "Battle Boonie",
+    "Vitals Vest",
+    "Sharp Chest Pain",
+    "Deity's Dress",
+    "The Cammy Jammies",
+    "Siberian Tigerstripe",
+    "Commando Elite",
+    "Aloha Apparel",
+    "Shutterbug",
+    "Melted Mop",
+    "Wanderer's Wear",
+    "Backbreaker's Guards",
+    "Mediterranean Mercenary",
+    "Stapler's Specs",
+    "The Pompous Privateer",
+    "The Bottle Cap",
+    "Brain Interface",
+    "Dancing Doe",
+    "Undercover Brolly",
+    "The Western Wraps",
+    "Combat Casual",
+    "Hawaiian Hunter",
+    "Barefoot Brawler",
+    "The Chaser",
+    "Tactical Turtleneck",
+    "The Throttlehead",
+    "The Team Player",
+    "Pest's Pads",
+    "Bait and Bite",
+    "The Nuke",
+    "Attack Packs",
+    "The Shellmet",
+    "Forest Footwear",
+    "The Most Dangerous Mane",
+    "The Classy Capper",
+    "The Pithy Professional",
+    "Conaghers' Utility Idol",
+    "Fireman's Essentials",
+    "Pocket Yeti",
+    "Blast Blocker",
+    "Puffy Polar Cap",
+    "The Sinner's Shade",
+    "Polar Bear",
+    "Brass Bucket",
+    "Down Tundra Coat",
+    "Pocket Santa",
+    "The Caribou Companion",
+    "Trucker's Topper",
+    "Bat Hat",
+    "Bread Biter",
+    "Derangement Garment",
+    "El Mostacho",
+    "Candy Cranium",
+    "Convict Cap",
+    "Pocket Halloween Boss",
+    "Party Poncho",
+    "Fuel Injector",
+    "BINOCULUS!",
+    "Calamitous Cauldron",
+    "The Seared Sorcerer",
+    "Goblineer",
+    "Handsome Devil",
+    "A Handsome Handy Thing",
+    "Hollowed Helm",
+    "Flavorful Baggies",
+    "King Cardbeard",
+    "The Boom Boxers",
+    "The Ghoul Box",
+    "Speedster's Spandex",
+    "The Upgrade",
+    "Blast Defense",
+    "Head Mounted Double Observatory",
+    "Field Practice",
+    "Warhood",
+    "Airborne Attire",
+    "Flakcatcher",
+    "Airtight Arsonist",
+    "Starlight Sorcerer",
+    "Nightbane Brim",
+    "Horror Shawl",
+    "Bombard Brigadier",
+    "Beaten and Bruised",
+    "Firearm Protector",
+    "The Imp's Imprint",
+    "Hunting Cloak",
+    "More Gun Marshal",
+    "The Turncoat",
+    "Courtly Cuirass",
+    "Squire's Sabatons",
+    "The Surgical Survivalist",
+    "The Demo's Dustcatcher",
+    "Scoped Spartan",
+    "The Airdog",
+    "Fire Fighter",
+    "Self-Care",
+    "Bazaar Bauble",
+    "Crabe de Chapeau",
+    "Poolside Polo",
+    "California Cap",
+    "Soda Specs",
+    "The Sophisticated Smoker",
+    "The Jarmaments",
+    "Head of Defense",
+    "Spirit of Halloween War Paint",
+    "Horror Holiday War Paint",
+    "Totally Boned War Paint",
+    "Haunted Ghosts War Paint",
+    "Beanie The All-Gnawing",
+    "Twisted Topper",
+    "Spooky Head-Bouncers",
+    "Creepy Crawlers",
+    "Trickster's Treats",
+    "The Scariest Mask EVER",
+    "Hat Outta Hell",
+    "Death Stare",
+    "Smiling Somen",
+    "Mini-Engy",
+    "Deadbeats",
+    "Mann-O-War",
+    "Hephaistos' Handcraft",
+    "Olympic Leapers",
+    "Vampire Vanquisher",
+    "Highway Star",
+    "Bandit's Boots",
+    "Murderer's Motif",
+    "The Arachno-Arsonist",
+    "Shin Shredders",
+    "The Patriot Peak",
+    "The Diplomat",
+    "Siberian Sweater",
+    "Medical Monarch",
+    "Chicago Overcoat",
+    "A Hat to Kill For",
+    "Hot Heels",
+    "Berlin Brain Bowl",
+    "Bunnyhopper's Ballistics Vest",
+    "Quack Canvassed War Paint",
+    "Merc Stained War Paint",
+    "Star Crossed War Paint",
+    "Cardboard Boxed War Paint",
+    "Bloom Buffed War Paint"
 ];
