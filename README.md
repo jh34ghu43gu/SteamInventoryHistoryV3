@@ -67,6 +67,9 @@
    * IHD_duplicate_entry_checker isn't complete iirc.
  * Nice
 
+ ### 0.6.10
+ * Item wear counter
+
  ## 0.5
  * Previous downloads can be read into the script before starting a download.
    * Incompatable with any downloads prior to version 0.4.6.

@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.6.9
+// @version      0.6.10
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -871,6 +871,13 @@ function IHD_unbox_stats_report() {
                 "Commando": 0,
                 "Mercenary": 0
             },
+            "Total Item Wears": {
+                "Factory New": 0,
+                "Minimal Wear": 0,
+                "Field-Tested": 0,
+                "Well-Worn": 0,
+                "Battle Scarred": 0
+            },
             "cosmetic": {
                 "Uniques": 0,
                 "Stranges": 0,
@@ -907,6 +914,13 @@ function IHD_unbox_stats_report() {
                     "Assassin": 0,
                     "Commando": 0,
                     "Mercenary": 0
+                },
+                "Item Wears": {
+                    "Factory New": 0,
+                    "Minimal Wear": 0,
+                    "Field-Tested": 0,
+                    "Well-Worn": 0,
+                    "Battle Scarred": 0
                 }
             },
             "weapon skins": { //Different from war paints
@@ -927,6 +941,13 @@ function IHD_unbox_stats_report() {
                     "Commando": 0,
                     "Mercenary": 0
                 },
+                "Item Wears": {
+                    "Factory New": 0,
+                    "Minimal Wear": 0,
+                    "Field-Tested": 0,
+                    "Well-Worn": 0,
+                    "Battle Scarred": 0
+                }
             }
         },
         "crates": {
@@ -983,6 +1004,8 @@ function IHD_unbox_stats_report() {
                                     } else { //Not a bonus item
                                         IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", crate_type[1], [crate_type[2]]);
                                         var foundGrade = false;
+
+                                        //Graded item totals TODO store grade in the json so this name compare can F off.
                                         IHD_ELITES.forEach(str => {
                                             if (name.includes(str) || name.includes(str.replace("The ", ""))) {
                                                 IHD_unbox_obj["cases"]["Total Graded Items"]["Elite"]++;
@@ -1026,6 +1049,28 @@ function IHD_unbox_stats_report() {
                                         });
                                         if (!foundGrade) {
                                             console.log("Couldn't find graded item: " + name + "'s grade.");
+                                        }
+
+                                        //Wears totals
+                                        if ("Wear" in value2) {
+                                            if (value2["Wear"] === 0) {
+                                                IHD_unbox_obj["cases"]["Total Item Wears"]["Factory New"]++;
+                                                IHD_unbox_obj["cases"][crate_type[1]]["Item Wears"]["Factory New"]++;
+                                            } else if (value2["Wear"] === 1) {
+                                                IHD_unbox_obj["cases"]["Total Item Wears"]["Minimal Wear"]++;
+                                                IHD_unbox_obj["cases"][crate_type[1]]["Item Wears"]["Minimal Wear"]++;
+                                            } else if (value2["Wear"] === 2) {
+                                                IHD_unbox_obj["cases"]["Total Item Wears"]["Field-Tested"]++;
+                                                IHD_unbox_obj["cases"][crate_type[1]]["Item Wears"]["Field-Tested"]++;
+                                            } else if (value2["Wear"] === 3) {
+                                                IHD_unbox_obj["cases"]["Total Item Wears"]["Well-Worn"]++;
+                                                IHD_unbox_obj["cases"][crate_type[1]]["Item Wears"]["Well-Worn"]++;
+                                            } else if (value2["Wear"] === 4) {
+                                                IHD_unbox_obj["cases"]["Total Item Wears"]["Battle Scarred"]++;
+                                                IHD_unbox_obj["cases"][crate_type[1]]["Item Wears"]["Battle Scarred"]++;
+                                            } else {
+                                                console.log("Wear value not matched to anything: " + value2["Wear"]);
+                                            }
                                         }
                                         bonus = false;
                                     }
@@ -1466,12 +1511,14 @@ var IHD_ignore_key_totals = {
     "Decorated Skins": 1,
     "Bonus Items": 1,
     "Graded Items": 1,
+    "Item Wears": 1,
     "Total Stranges": 1,
     "Total Uniques": 1,
     "Total Unusuals": 1,
     "Total Decorated Skins": 1,
     "Total Bonus Items": 1,
     "Total Graded Items": 1,
+    "Total Item Wears": 1,
     "Used Items": 1 //Trade ups and crafting
 }
 function IHD_stats_obj_to_html(obj) {
