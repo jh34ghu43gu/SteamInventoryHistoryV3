@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.6.10
+// @version      0.7
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -12,7 +12,6 @@
 // @grant        GM_getValue
 // ==/UserScript==
 
-//TODO store start and end cursors in the file
 //TODO add tour numbers to when an aussie was dropped
 
 //NOTE: Need a breadbox opening from someone else to make sure gifted unboxes from that are recorded right, when the data display part is done
@@ -30,6 +29,7 @@ var IHD_start_cursor;
 var IHD_prev_cursor;
 var IHD_retry_counter = 0;
 var IHD_max_retries = 100; //Retry on errors (not 429) this many times.
+var IHD_debug_statements = false;
 //Attribute names
 var IHD_items_gained_attr = "Gained";
 var IHD_items_lost_attr = "Lost";
@@ -236,6 +236,16 @@ const IHD_wear_map = {
     "Well-Worn": 3,
     "Battle Scarred": 4
 };
+
+//Rarity map for case items to be mapped to numbers
+const IHD_rarity_map = {
+    "Civilian": 0,
+    "Freelance": 1,
+    "Mercenary": 2,
+    "Commando": 3,
+    "Assassin": 4,
+    "Elite": 5
+}
 
 
 //Begin script
@@ -484,7 +494,7 @@ function IHD_read_file_objects(objects) {
                         IHD_duplicate_times[IHD_json_object[time_count].time][time_count] = IHD_json_object[time_count];
                     }
                 }
-                console.log(IHD_duplicate_times);
+                IHD_debug_statements ? console.log("Found duplicate time: " + IHD_duplicate_times) : 0;
             }
             for (var m = 0; m < Object.keys(IHD_file_json_obj).length; m++) {
                 if (!(Object.keys(IHD_file_json_obj)[m] === "dictionary")) {
@@ -678,10 +688,10 @@ function IHD_stats_add_item_to_obj(obj, name, child, child2, child3, child4) {
             obj[child][name] = 1;
         }
     } else {
-        if (name in obj[child]) {
+        if (name in obj) {
             obj[name]++;
         } else {
-            obj[nmae] = 1;
+            obj[name] = 1;
         }
     }
 }
@@ -716,107 +726,297 @@ const IHD_mvm_robo_hat_list = [
     "Stealth Steeler",
     "RoBro 3000"
 ];
+
+//Reverse the missions inside obj and use the tourSignifier to generate tour objects to stick in outObj
+//In adition to adding the tour to "All Tours", aussie dropping tours will also add themselves to "Australium Dropped Tours"
+//Tour signifier will be "Botkiller" for all tours except Two Cities which will be "Killstreak"
+//Mod is the amount of missions in a tour. This is only used to output a warning message as it's not reliable to keep track of tours this way.
+//Two Cities has two additional objs called "Mission Loot Amount Distribution" and "Tour Loot Amount Distribution" 
+//  which counts how many times we got X objects of loot per mission / tour
+//Dry streak counting is also done in here. "Dry Streaks"
+//Example: IHD_mvm_temptour_reverse(tempTour["Steel Trap Tours"], "Botkiller", 6, IHD_tours_obj["Steel Trap Tours"])
+function IHD_mvm_temptour_reverse(obj, tourSignifier, mod, outObj) {
+    var tourNum = 1;
+    var dryStreak = 0;
+    var missionObj = {};
+    var tempMissionNum = 1;
+    var twoCitiesTourVar = 0;
+    for (var missionNum = Object.keys(obj).length - 1; missionNum >= 0; missionNum--) {
+        var twoCitiesMissionVar = 0;
+        var specFabs = 0;
+        var aussie = false;
+        var tour = false;
+        for (const [key, value] of Object.entries(obj[missionNum])) {
+            if (!key.includes("Operation")) {
+                twoCitiesTourVar += value;
+                if (!(key.includes("Australium") && !key.includes("Australium Gold")) && !key.includes("Killstreak")) {
+                    twoCitiesMissionVar += value;
+                }
+                if (key.includes("Specialized")) {
+                    specFabs++;
+                }
+            }
+            if (key.includes("Golden Frying Pan") || (key.includes("Australium") && !key.includes("Australium Gold"))) {
+                aussie = true;
+                tour = true;
+            }
+            if (key.includes(tourSignifier) && !key.includes("Fabricator")) {
+                tour = true;
+            }
+        }
+        missionObj["Mission #" + tempMissionNum] = { ...obj[missionNum] }
+        if (tourSignifier === "Killstreak") {
+            if (specFabs === 2 || (specFabs === 1 && !tour)) {
+                twoCitiesMissionVar++;
+            }
+            IHD_stats_add_item_to_obj(outObj["Mission Loot Amount Distribution"], twoCitiesMissionVar);
+        }
+        if (tour) {
+            IHD_stats_add_item_to_obj(outObj, "Total Tours");
+            outObj["All Tours"]["Tour #" + tourNum] = { ...missionObj }
+            if (aussie) {
+                outObj["Australium Dropped Tours"]["Tour #" + tourNum] = { ...missionObj }
+                IHD_stats_add_item_to_obj(outObj["Dry Streaks"], dryStreak);
+                dryStreak = 0;
+            } else {
+                dryStreak++;
+            }
+
+
+            if (Object.keys(outObj["All Tours"]["Tour #" + tourNum]).length !== mod) {
+                console.warn("Tour #" + tourNum + " had abnormal amount of missions for that tour, probably skipped a mission: " + Object.keys(outObj["All Tours"]["Tour #" + tourNum]).length);
+            } else if (tourSignifier === "Killstreak") { //Throwing out this data if we think it could be wrong
+                IHD_stats_add_item_to_obj(outObj["Tour Loot Amount Distribution"], twoCitiesTourVar);
+            }
+            missionObj = {};
+            tourNum++;
+            tempMissionNum = 1;
+            twoCitiesTourVar = 0;
+        } else {
+            tempMissionNum++;
+        }
+    }
+}
+
 function IHD_mvm_stats_report() {
     var IHD_mvm_obj = {
-        "kits": {},
-        "spec": {},
-        "prof": {},
-        "parts": {},
-        "aussies": {},
-        "botkillers": {
-            "os": {
-                "blood": {},
-                "rust": {}
+        "Australiums": {},
+        "Two Cities Specific Loot": {
+            "Professional Killstreak Kit Fabricators": {},
+            "Specialized Killstreak Kit Fabricators": {},
+            "Killstreak Kits": {},
+            "Robot Parts": {}
+        },
+        "Botkillers": {
+            "Oil Spill": {
+                "Blood Botkillers": {},
+                "Rust Botkillers": {}
             },
-            "st": {
-                "gold": {},
-                "silver": {}
+            "Steel Trap": {
+                "Gold Mk. I Botkillers": {},
+                "Silver Mk. I Botkillers": {}
             },
-            "me": {
-                "gold": {},
-                "silver": {}
+            "Mecha Engine": {
+                "Gold Mk. II Botkillers": {},
+                "Silver Mk. II Botkillers": {}
             },
-            "gg": {
-                "carbonado": {},
-                "diamond": {}
+            "Gear Grinder": {
+                "Carbonado Botkillers": {},
+                "Diamond Botkillers": {}
             }
         },
-        "weapons": {},
-        "tools": {
-            "paint": {}
+        "Weapons": {},
+        "Tools": {
+            "Paints": {}
         },
-        "hats": {
-            "robo": {},
-            "hat": {}
+        "Hats": {
+            "Regular Hats": {},
+            "Robot Hats": {}
         },
-        "badges": {}
+        "Badges": {}
     };
     var IHD_surplus_obj = {
-        "weapons": {},
-        "tools": {
-            "paint": {}
+        "Weapons": {},
+        "Tools": {
+            "Paints": {}
         },
-        "hats": {
-            "robo": {},
-            "hat": {}
+        "Hats": {
+            "Robot Hats": {},
+            "Regular Hats": {}
         }
     };
+    var IHD_tours_obj = {
+        "Oil Spill Tours": {
+            "Total Tours": 0,
+            "Total Missions": 0,
+            "All Tours": {}
+        },
+        "Steel Trap Tours": {
+            "Total Tours": 0,
+            "Total Missions": 0,
+            "Australium Dropped Tours": {},
+            "Dry Streaks": {},
+            "All Tours": {}
+        },
+        "Mecha Engine Tours": {
+            "Total Tours": 0,
+            "Total Missions": 0,
+            "Australium Dropped Tours": {},
+            "Dry Streaks": {},
+            "All Tours": {}
+        },
+        "Two Cities Tours": {
+            "Total Tours": 0,
+            "Total Missions": 0,
+            "Mission Loot Amount Distribution": {},
+            "Tour Loot Amount Distribution": {},
+            "Australium Dropped Tours": {},
+            "Dry Streaks": {},
+            "All Tours": {}
+        },
+        "Gear Grinder Tours": {
+            "Total Tours": 0,
+            "Total Missions": 0,
+            "Australium Dropped Tours": {},
+            "Dry Streaks": {},
+            "All Tours": {}
+        }
+    }
+
     //Missions and tours
     if ("6" in IHD_events_type_sorted) {
+        var tempTour = {
+            "Oil Spill Tours": {},
+            "Steel Trap Tours": {},
+            "Mecha Engine Tours": {},
+            "Two Cities Tours": {},
+            "Gear Grinder Tours": {}
+        }
         for (const [key, value] of Object.entries(IHD_events_type_sorted["6"])) {
+            var tempMission = {};
+            var tour = "";
             if (IHD_items_gained_attr in value) {
+                for (const [key2, value2] of Object.entries(value[IHD_items_lost_attr])) {
+                    //Grab what tour number this was for
+                    //Redunant check to see what tour we are in
+                    if ("name" in value2) {
+                        var name = IHD_inverted_dictionary[value2["name"]];
+                        if (IHD_mvm_badge_list.includes(name)) {
+                            switch (IHD_mvm_badge_list.indexOf(name)) {
+                                case 0:
+                                    tour = "Oil Spill Tours";
+                                    break;
+                                case 1:
+                                    tour = "Steel Trap Tours";
+                                    break;
+                                case 2:
+                                    tour = "Mecha Engine Tours";
+                                    break;
+                                case 3:
+                                    tour = "Two Cities Tours";
+                                    break;
+                                case 4:
+                                    tour = "Gear Grinder Tours";
+                                    break;
+                                default:
+                                    IHD_debug_statements ? console.log("Tour had invalid deleted badge index of: " + IHD_mvm_badge_list.indexOf(name)) : 0;
+                                    break;
+                            }
+                        }
+                    }
+                }
                 for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
                     //Tally all the items into IHD_mvm_obj
                     if ("name" in value2) {
-                        var name = IHD_inverted_dictionary[value2["name"]];
-                        if (name.includes("Golden Frying Pan") || name.includes("Australium")) {
-                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "aussies");
+                        name = IHD_inverted_dictionary[value2["name"]];
+                        IHD_stats_add_item_to_obj(tempMission, name);
+                        if (name.includes("Golden Frying Pan") || (name.includes("Australium") && !name.includes("Australium Gold"))) {
+                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "Australiums");
                         } else if (name.includes("Professional")) {
-                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "prof");
+                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "Two Cities Specific Loot", "Professional Killstreak Kit Fabricators");
                         } else if (name.includes("Specialized")) {
-                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "spec");
+                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "Two Cities Specific Loot", "Specialized Killstreak Kit Fabricators");
                         } else if (name.includes("Killstreak")) {
-                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "kits");
+                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "Two Cities Specific Loot", "Killstreak Kits");
                         } else if (IHD_mvm_parts_list.includes(name)) {
-                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "parts");
+                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "Two Cities Specific Loot", "Robot Parts");
                         } else if (IHD_mvm_badge_list.includes(name)) {
-                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "badges");
+                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "Badges");
+                            //Checking for the tour twice in case a badge wasn't recorded properly in the download.
+                            //Note that this one is mandatory since we might not always have removed a badge (1st mission)
+                            switch (IHD_mvm_badge_list.indexOf(name)) {
+                                case 0:
+                                    tour = "Oil Spill Tours";
+                                    break;
+                                case 1:
+                                    tour = "Steel Trap Tours";
+                                    break;
+                                case 2:
+                                    tour = "Mecha Engine Tours";
+                                    break;
+                                case 3:
+                                    tour = "Two Cities Tours";
+                                    break;
+                                case 4:
+                                    tour = "Gear Grinder Tours";
+                                    break;
+                                default:
+                                    IHD_debug_statements ? console.log("Tour had invalid earned badge index of: " + IHD_mvm_badge_list.indexOf(name)) : 0;
+                                    break;
+
+                            }
                         } else if (name.includes("Botkiller")) {
                             if (name.includes("Carbonado")) {
-                                IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "botkillers", "gg", "carbonado");
+                                IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "Botkillers", "Gear Grinder", "Carbonado Botkillers");
                             } else if (name.includes("Diamond")) {
-                                IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "botkillers", "gg", "diamond");
+                                IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "Botkillers", "Gear Grinder", "Diamond Botkillers");
                             } else if (name.includes("Rust")) {
-                                IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "botkillers", "os", "rust");
+                                IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "Botkillers", "Oil Spill", "Rust Botkillers");
                             } else if (name.includes("Blood")) {
-                                IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "botkillers", "os", "blood");
+                                IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "Botkillers", "Oil Spill", "Blood Botkillers");
                             } else if (name.includes("Silver") && name.includes("Mk.II")) {
-                                IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "botkillers", "me", "silver");
+                                IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "Botkillers", "Mecha Engine", "Silver Mk. II Botkillers");
                             } else if (name.includes("Gold") && name.includes("Mk.II")) {
-                                IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "botkillers", "me", "gold");
+                                IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "Botkillers", "Mecha Engine", "Gold Mk. II Botkillers");
                             } else if (name.includes("Silver")) {
-                                IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "botkillers", "st", "silver");
+                                IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "Botkillers", "Steel Trap", "Silver Mk. I Botkillers");
                             } else if (name.includes("Gold")) {
-                                IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "botkillers", "st", "gold");
+                                IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "Botkillers", "Steel Trap", "Gold Mk. I Botkillers");
                             }
                         } else if (IHD_weapon_list.includes(name) || IHD_weapon_list.includes(name.replace("The ", ""))) {
-                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "weapons");
+                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "Weapons");
                         } else if (IHD_tool_list.includes(name)) {
-                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "tools");
+                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "Tools");
                         } else if (IHD_paint_list.includes(name)) {
-                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "tools", "paint");
+                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "Tools", "Paints");
                         } else if (IHD_mvm_robo_hat_list.includes(name) || IHD_mvm_robo_hat_list.includes(name.replace("The ", ""))) {
-                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "hats", "robo");
+                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "Hats", "Robot Hats");
                         } else if (IHD_hat_list.includes(name) || IHD_hat_list.includes(name.replace("The ", ""))) {
-                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "hats", "hat");
+                            IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "Hats", "Regular Hats");
                         } else {
                             IHD_stats_add_item_to_obj(IHD_mvm_obj, name);
                         }
                     }
                 }
             }
+            if (tour) {
+                IHD_tours_obj[tour]["Total Missions"]++;
+                var mission = 0;
+                while (mission in tempTour[tour]) {
+                    mission++;
+                }
+                tempTour[tour][mission] = { ...tempMission };
+            } else if (IHD_debug_statements) {
+                console.log("Could not find a defined tour for mission at event #" + key);
+            }
         }
+        IHD_mvm_temptour_reverse(tempTour["Oil Spill Tours"], "Botkiller", 6, IHD_tours_obj["Oil Spill Tours"]);
+        IHD_mvm_temptour_reverse(tempTour["Steel Trap Tours"], "Botkiller", 6, IHD_tours_obj["Steel Trap Tours"]);
+        IHD_mvm_temptour_reverse(tempTour["Mecha Engine Tours"], "Botkiller", 3, IHD_tours_obj["Mecha Engine Tours"]);
+        IHD_mvm_temptour_reverse(tempTour["Two Cities Tours"], "Killstreak", 4, IHD_tours_obj["Two Cities Tours"]);
+        IHD_mvm_temptour_reverse(tempTour["Gear Grinder Tours"], "Botkiller", 3, IHD_tours_obj["Gear Grinder Tours"]);
     }
+
     //Surplus
     if ("7" in IHD_events_type_sorted) {
         for (const [key, value] of Object.entries(IHD_events_type_sorted["7"])) {
@@ -826,15 +1026,15 @@ function IHD_mvm_stats_report() {
                     if ("name" in value2) {
                         name = IHD_inverted_dictionary[value2["name"]];
                         if (IHD_weapon_list.includes(name) || IHD_weapon_list.includes(name.replace("The ", ""))) {
-                            IHD_stats_add_item_to_obj(IHD_surplus_obj, name, "weapons");
+                            IHD_stats_add_item_to_obj(IHD_surplus_obj, name, "Weapons");
                         } else if (IHD_tool_list.includes(name)) {
-                            IHD_stats_add_item_to_obj(IHD_surplus_obj, name, "tools");
+                            IHD_stats_add_item_to_obj(IHD_surplus_obj, name, "Tools");
                         } else if (IHD_paint_list.includes(name)) {
-                            IHD_stats_add_item_to_obj(IHD_surplus_obj, name, "tools", "paint");
+                            IHD_stats_add_item_to_obj(IHD_surplus_obj, name, "Tools", "Paints");
                         } else if (IHD_mvm_robo_hat_list.includes(name) || IHD_mvm_robo_hat_list.includes(name.replace("The ", ""))) {
-                            IHD_stats_add_item_to_obj(IHD_surplus_obj, name, "hats", "robo");
+                            IHD_stats_add_item_to_obj(IHD_surplus_obj, name, "Hats", "Robot Hats");
                         } else if (IHD_hat_list.includes(name) || IHD_hat_list.includes(name.replace("The ", ""))) {
-                            IHD_stats_add_item_to_obj(IHD_surplus_obj, name, "hats", "hat");
+                            IHD_stats_add_item_to_obj(IHD_surplus_obj, name, "Hats", "Regular Hats");
                         } else {
                             IHD_stats_add_item_to_obj(IHD_surplus_obj, name);
                         }
@@ -845,6 +1045,7 @@ function IHD_mvm_stats_report() {
     }
 
     document.getElementById("IHD_stats_div").innerHTML += "<br><div class=\"mvm\"><h2>MvM Loot</h2></div>" + IHD_stats_obj_to_html(IHD_mvm_obj)[0] + "<br>";
+    document.getElementById("IHD_stats_div").innerHTML += "<br><div class=\"mvm\"><h2>MvM Tours</h2></div><br><h4>Note: Regular badge deletions muddy the tour data below.</h4>" + IHD_stats_obj_to_html(IHD_tours_obj)[0] + "<br>";
     document.getElementById("IHD_stats_div").innerHTML += "<br><div class=\"surplus\"><h2>Surplus Loot</h2></div>" + IHD_stats_obj_to_html(IHD_surplus_obj)[0] + "<br>";
 }
 
@@ -852,7 +1053,22 @@ function IHD_mvm_stats_report() {
 function IHD_unbox_stats_report() {
     var IHD_unbox_obj = {
         "All Unusuals": {},
-        "cases": {
+        "Cases": {
+            "Total Graded Items": {
+                "Elite": 0,
+                "Assassin": 0,
+                "Commando": 0,
+                "Mercenary": 0,
+                "Freelance": 0,
+                "Civilian": 0
+            },
+            "Total Item Wears": {
+                "Factory New": 0,
+                "Minimal Wear": 0,
+                "Field-Tested": 0,
+                "Well-Worn": 0,
+                "Battle Scarred": 0
+            },
             "Total Uniques": 0,
             "Total Decorated Skins": 0,
             "Total Stranges": 0,
@@ -865,20 +1081,15 @@ function IHD_unbox_stats_report() {
                 "Halloween Bonus": {}
                 //Tickets, stat transfer tools
             },
-            "Total Graded Items": {
-                "Elite": 0,
-                "Assassin": 0,
-                "Commando": 0,
-                "Mercenary": 0
-            },
-            "Total Item Wears": {
-                "Factory New": 0,
-                "Minimal Wear": 0,
-                "Field-Tested": 0,
-                "Well-Worn": 0,
-                "Battle Scarred": 0
-            },
-            "cosmetic": {
+            "Cosmetic Cases": {
+                "Graded Items": {
+                    "Elite": 0,
+                    "Assassin": 0,
+                    "Commando": 0,
+                    "Mercenary": 0,
+                    "Freelance": 0,
+                    "Civilian": 0
+                },
                 "Uniques": 0,
                 "Stranges": 0,
                 "Unusuals": {},
@@ -889,17 +1100,25 @@ function IHD_unbox_stats_report() {
                     "Unusualifiers": {},
                     "Halloween Bonus": {}
                     //Tickets, stat transfer tools
-                },
+                }
+            },
+            "War Paint Cases": {
                 "Graded Items": {
                     "Elite": 0,
                     "Assassin": 0,
                     "Commando": 0,
-                    "Mercenary": 0
-                }
-            },
-            "war paints": {
+                    "Mercenary": 0,
+                    "Freelance": 0,
+                    "Civilian": 0
+                },
+                "Item Wears": {
+                    "Factory New": 0,
+                    "Minimal Wear": 0,
+                    "Field-Tested": 0,
+                    "Well-Worn": 0,
+                    "Battle Scarred": 0
+                },
                 "Decorated Skins": 0,
-                "Uniques": 0,
                 "Stranges": 0,
                 "Unusuals": {},
                 "Bonus Items": {
@@ -908,12 +1127,16 @@ function IHD_unbox_stats_report() {
                     "Tools": {},
                     "Unusualifiers": {}
                     //Tickets, stat transfer tools
-                },
+                }
+            },
+            "Skin Cases": { //Different from war paints
                 "Graded Items": {
                     "Elite": 0,
                     "Assassin": 0,
                     "Commando": 0,
-                    "Mercenary": 0
+                    "Mercenary": 0,
+                    "Freelance": 0,
+                    "Civilian": 0
                 },
                 "Item Wears": {
                     "Factory New": 0,
@@ -921,11 +1144,8 @@ function IHD_unbox_stats_report() {
                     "Field-Tested": 0,
                     "Well-Worn": 0,
                     "Battle Scarred": 0
-                }
-            },
-            "weapon skins": { //Different from war paints
+                },
                 "Decorated Skins": 0,
-                "Uniques": 0,
                 "Stranges": 0,
                 "Unusuals": {},
                 "Bonus Items": {
@@ -934,23 +1154,10 @@ function IHD_unbox_stats_report() {
                     "Tools": {},
                     "Unusualifiers": {}
                     //Tickets, stat transfer tools
-                },
-                "Graded Items": {
-                    "Elite": 0,
-                    "Assassin": 0,
-                    "Commando": 0,
-                    "Mercenary": 0
-                },
-                "Item Wears": {
-                    "Factory New": 0,
-                    "Minimal Wear": 0,
-                    "Field-Tested": 0,
-                    "Well-Worn": 0,
-                    "Battle Scarred": 0
                 }
             }
         },
-        "crates": {
+        "Crates": {
             "Total Unusuals": {}
         },
         "Errors": {}
@@ -959,16 +1166,16 @@ function IHD_unbox_stats_report() {
     if ("8" in IHD_events_type_sorted) {
         for (const [key, value] of Object.entries(IHD_events_type_sorted["8"])) {
             if (IHD_items_lost_attr in value) {
-                var crate_type = IHD_get_crate_name(value[IHD_items_lost_attr], true);
+                var crate_type = IHD_get_crate_name(value[IHD_items_lost_attr], IHD_debug_statements);
                 if (crate_type.length > 1) {
                     //Set crate name in appropriate object
                     if (crate_type.length > 2) { //case
-                        if (!(crate_type[2] in IHD_unbox_obj["cases"][crate_type[1]])) {
-                            IHD_unbox_obj["cases"][crate_type[1]][crate_type[2]] = {};
+                        if (!(crate_type[2] in IHD_unbox_obj["Cases"][crate_type[1]])) {
+                            IHD_unbox_obj["Cases"][crate_type[1]][crate_type[2]] = {};
                         }
                     } else { //crate
-                        if (!(crate_type[1] in IHD_unbox_obj["crates"])) {
-                            IHD_unbox_obj["crates"][crate_type[1]] = {};
+                        if (!(crate_type[1] in IHD_unbox_obj["Crates"])) {
+                            IHD_unbox_obj["Crates"][crate_type[1]] = {};
                         }
                     }
                     //Add items; incriment counters
@@ -984,120 +1191,98 @@ function IHD_unbox_stats_report() {
                                 if (crate_type.length > 2) {
                                     //Bonus items 
                                     if (IHD_paint_list.includes(name)) { //Paint
-                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", "Total Bonus Items", "Paint");
-                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", crate_type[1], "Bonus Items", "Paint");
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", "Total Bonus Items", "Paint");
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], "Bonus Items", "Paint");
                                     } else if (IHD_tool_list.includes(name)) { //Tools
-                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", "Total Bonus Items", "Tools");
-                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", crate_type[1], "Bonus Items", "Tools");
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", "Total Bonus Items", "Tools");
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], "Bonus Items", "Tools");
                                     } else if (name.includes("Strange Part: ")) { //Strange parts
-                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", "Total Bonus Items", "Strange Parts");
-                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", crate_type[1], "Bonus Items", "Strange Parts");
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", "Total Bonus Items", "Strange Parts");
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], "Bonus Items", "Strange Parts");
                                     } else if (name.includes("Unusualifier")) { //Unusualifiers
-                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", "Total Bonus Items", "Unusualifiers");
-                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", crate_type[1], "Bonus Items", "Unusualifiers");
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", "Total Bonus Items", "Unusualifiers");
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], "Bonus Items", "Unusualifiers");
                                     } else if (IHD_Halloween_Bonus.includes(name) || IHD_Halloween_Bonus.includes(name.replace("The ", ""))) { //Bonus Halloween Cosmetics
-                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", "Total Bonus Items", "Halloween Bonus");
-                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", crate_type[1], "Bonus Items", "Halloween Bonus");
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", "Total Bonus Items", "Halloween Bonus");
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], "Bonus Items", "Halloween Bonus");
                                     } else if (name === "Tour of Duty Ticket" || name === "Strange Count Transfer Tool") { //ToD and stat transfer
-                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", "Total Bonus Items");
-                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", crate_type[1], "Bonus Items");
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", "Total Bonus Items");
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], "Bonus Items");
                                     } else { //Not a bonus item
-                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", crate_type[1], [crate_type[2]]);
-                                        var foundGrade = false;
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], [crate_type[2]]);
 
-                                        //Graded item totals TODO store grade in the json so this name compare can F off.
-                                        IHD_ELITES.forEach(str => {
-                                            if (name.includes(str) || name.includes(str.replace("The ", ""))) {
-                                                IHD_unbox_obj["cases"]["Total Graded Items"]["Elite"]++;
-                                                IHD_unbox_obj["cases"][crate_type[1]]["Graded Items"]["Elite"]++;
-                                                foundGrade = true;
-                                                return;
+                                        //Grades or rarity
+                                        if ("Rarity" in value2) {
+                                            if (value2["Rarity"] === 0) {
+                                                IHD_unbox_obj["Cases"]["Total Graded Items"]["Civilian"]++;
+                                                IHD_unbox_obj["Cases"][crate_type[1]]["Graded Items"]["Civilian"]++;
+                                            } else if (value2["Rarity"] === 1) {
+                                                IHD_unbox_obj["Cases"]["Total Graded Items"]["Freelance"]++;
+                                                IHD_unbox_obj["Cases"][crate_type[1]]["Graded Items"]["Freelance"]++;
+                                            } else if (value2["Rarity"] === 2) {
+                                                IHD_unbox_obj["Cases"]["Total Graded Items"]["Mercenary"]++;
+                                                IHD_unbox_obj["Cases"][crate_type[1]]["Graded Items"]["Mercenary"]++;
+                                            } else if (value2["Rarity"] === 3) {
+                                                IHD_unbox_obj["Cases"]["Total Graded Items"]["Commando"]++;
+                                                IHD_unbox_obj["Cases"][crate_type[1]]["Graded Items"]["Commando"]++;
+                                            } else if (value2["Rarity"] === 4) {
+                                                IHD_unbox_obj["Cases"]["Total Graded Items"]["Assassin"]++;
+                                                IHD_unbox_obj["Cases"][crate_type[1]]["Graded Items"]["Assassin"]++;
+                                            } else if (value2["Rarity"] === 5) {
+                                                IHD_unbox_obj["Cases"]["Total Graded Items"]["Elite"]++;
+                                                IHD_unbox_obj["Cases"][crate_type[1]]["Graded Items"]["Elite"]++;
+                                            } else {
+                                                console.warn("Wear value not matched to anything: " + value2["Wear"]);
                                             }
-                                        });
-                                        IHD_ASSASSINS.forEach(str => {
-                                            if (foundGrade) {
-                                                return;
-                                            }
-                                            if (name.includes(str) || name.includes(str.replace("The ", ""))) {
-                                                IHD_unbox_obj["cases"]["Total Graded Items"]["Assassin"]++;
-                                                IHD_unbox_obj["cases"][crate_type[1]]["Graded Items"]["Assassin"]++;
-                                                foundGrade = true;
-                                                return;
-                                            }
-                                        });
-                                        IHD_COMMANDOS.forEach(str => {
-                                            if (foundGrade) {
-                                                return;
-                                            }
-                                            if (name.includes(str) || name.includes(str.replace("The ", ""))) {
-                                                IHD_unbox_obj["cases"]["Total Graded Items"]["Commando"]++;
-                                                IHD_unbox_obj["cases"][crate_type[1]]["Graded Items"]["Commando"]++;
-                                                foundGrade = true;
-                                                return;
-                                            }
-                                        });
-                                        IHD_MERCS.forEach(str => {
-                                            if (foundGrade) {
-                                                return;
-                                            }
-                                            if (name.includes(str) || name.includes(str.replace("The ", ""))) {
-                                                IHD_unbox_obj["cases"]["Total Graded Items"]["Mercenary"]++;
-                                                IHD_unbox_obj["cases"][crate_type[1]]["Graded Items"]["Mercenary"]++;
-                                                foundGrade = true;
-                                                return;
-                                            }
-                                        });
-                                        if (!foundGrade) {
-                                            console.log("Couldn't find graded item: " + name + "'s grade.");
                                         }
 
                                         //Wears totals
                                         if ("Wear" in value2) {
                                             if (value2["Wear"] === 0) {
-                                                IHD_unbox_obj["cases"]["Total Item Wears"]["Factory New"]++;
-                                                IHD_unbox_obj["cases"][crate_type[1]]["Item Wears"]["Factory New"]++;
+                                                IHD_unbox_obj["Cases"]["Total Item Wears"]["Factory New"]++;
+                                                IHD_unbox_obj["Cases"][crate_type[1]]["Item Wears"]["Factory New"]++;
                                             } else if (value2["Wear"] === 1) {
-                                                IHD_unbox_obj["cases"]["Total Item Wears"]["Minimal Wear"]++;
-                                                IHD_unbox_obj["cases"][crate_type[1]]["Item Wears"]["Minimal Wear"]++;
+                                                IHD_unbox_obj["Cases"]["Total Item Wears"]["Minimal Wear"]++;
+                                                IHD_unbox_obj["Cases"][crate_type[1]]["Item Wears"]["Minimal Wear"]++;
                                             } else if (value2["Wear"] === 2) {
-                                                IHD_unbox_obj["cases"]["Total Item Wears"]["Field-Tested"]++;
-                                                IHD_unbox_obj["cases"][crate_type[1]]["Item Wears"]["Field-Tested"]++;
+                                                IHD_unbox_obj["Cases"]["Total Item Wears"]["Field-Tested"]++;
+                                                IHD_unbox_obj["Cases"][crate_type[1]]["Item Wears"]["Field-Tested"]++;
                                             } else if (value2["Wear"] === 3) {
-                                                IHD_unbox_obj["cases"]["Total Item Wears"]["Well-Worn"]++;
-                                                IHD_unbox_obj["cases"][crate_type[1]]["Item Wears"]["Well-Worn"]++;
+                                                IHD_unbox_obj["Cases"]["Total Item Wears"]["Well-Worn"]++;
+                                                IHD_unbox_obj["Cases"][crate_type[1]]["Item Wears"]["Well-Worn"]++;
                                             } else if (value2["Wear"] === 4) {
-                                                IHD_unbox_obj["cases"]["Total Item Wears"]["Battle Scarred"]++;
-                                                IHD_unbox_obj["cases"][crate_type[1]]["Item Wears"]["Battle Scarred"]++;
+                                                IHD_unbox_obj["Cases"]["Total Item Wears"]["Battle Scarred"]++;
+                                                IHD_unbox_obj["Cases"][crate_type[1]]["Item Wears"]["Battle Scarred"]++;
                                             } else {
-                                                console.log("Wear value not matched to anything: " + value2["Wear"]);
+                                                console.warn("Wear value not matched to anything: " + value2["Wear"]);
                                             }
                                         }
                                         bonus = false;
                                     }
                                 } else {
-                                    IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "crates", crate_type[1]);
+                                    IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Crates", crate_type[1]);
                                 }
                                 //Increment qualities
                                 if ("Quality" in value2) {
                                     var quality = value2["Quality"];
                                     if (crate_type.length > 2) {
                                         if (quality === "6" && !bonus) {
-                                            IHD_unbox_obj["cases"]["Total Uniques"]++;
-                                            IHD_unbox_obj["cases"][crate_type[1]]["Uniques"]++;
+                                            IHD_unbox_obj["Cases"]["Total Uniques"]++;
+                                            IHD_unbox_obj["Cases"][crate_type[1]]["Uniques"]++;
                                         } else if (quality === "15") {
-                                            IHD_unbox_obj["cases"]["Total Decorated Skins"]++;
-                                            IHD_unbox_obj["cases"][crate_type[1]]["Decorated Skins"]++;
+                                            IHD_unbox_obj["Cases"]["Total Decorated Skins"]++;
+                                            IHD_unbox_obj["Cases"][crate_type[1]]["Decorated Skins"]++;
                                         } else if (quality === "11") {
-                                            IHD_unbox_obj["cases"]["Total Stranges"]++;
-                                            IHD_unbox_obj["cases"][crate_type[1]]["Stranges"]++;
+                                            IHD_unbox_obj["Cases"]["Total Stranges"]++;
+                                            IHD_unbox_obj["Cases"][crate_type[1]]["Stranges"]++;
                                         } else if (quality === "5" && !name.includes("Unusualifier")) { //Unusualifiers ARE NOT unusuals
-                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", "Total Unusuals");
-                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "cases", crate_type[1], "Unusuals");
+                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", "Total Unusuals");
+                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], "Unusuals");
                                             IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "All Unusuals");
                                         }
                                     } else {
                                         if (quality === "5" && !name.includes("Unusualifier")) { //Unusualifiers ARE NOT unusuals
-                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "crates", "Total Unusuals");
+                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Crates", "Total Unusuals");
                                             IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "All Unusuals");
                                         }
                                     }
@@ -1153,8 +1338,8 @@ function IHD_tradeup_report() {
                 if (Object.keys(value[IHD_items_lost_attr]).length === 5) {
                     type = "Stat Clocks";
                 } else if (Object.keys(value[IHD_items_lost_attr]).length < 10) {
-                    console.log("Trade up only had " + Object.keys(value[IHD_items_lost_attr]).length + " items instead of expected 10.");
-                    console.log(value["time"]);
+                    console.warn("Trade up only had " + Object.keys(value[IHD_items_lost_attr]).length + " items instead of expected 10.");
+                    IHD_debug_statements ? console.log(value["time"]) : 0;
                 }
 
                 for (const [key2, value2] of Object.entries(value[IHD_items_lost_attr])) {
@@ -1167,7 +1352,7 @@ function IHD_tradeup_report() {
                         } else if (quality === "15") {
                             quality = "Unique Paints";
                         } else {
-                            console.log("Somehow quality for tradeup was not unique or strange and was instead: " + quality);
+                            console.warn("Somehow quality for tradeup was not unique or strange and was instead: " + quality);
                             if (!("Errors" in IHD_tradeup_obj[type]["Used Items"])) {
                                 IHD_tradeup_obj[type]["Used Items"]["Errors"] = {};
                             }
@@ -1196,7 +1381,7 @@ function IHD_tradeup_report() {
                         } else if (quality === "15") {
                             quality = "Unique Paints";
                         } else {
-                            console.log("Somehow quality for tradeup was not unique or strange and was instead: " + quality);
+                            console.warn("Somehow quality for tradeup was not unique or strange and was instead: " + quality);
                             if (!("Errors" in IHD_tradeup_obj[type]["Created Items"])) {
                                 IHD_tradeup_obj[type]["Created Items"]["Errors"] = {};
                             }
@@ -1313,7 +1498,7 @@ function IHD_used_report() {
                 }
             }
             if (IHD_items_gained_attr in value) {
-                console.log(value[IHD_items_gained_attr]);
+                IHD_debug_statements ? console.log("Somehow gained an item when using an item: " + value[IHD_items_gained_attr]) : 0;
             }
         }
     }
@@ -1344,7 +1529,7 @@ function IHD_found_report() {
     if ("37" in IHD_events_type_sorted) {
         for (const [key, value] of Object.entries(IHD_events_type_sorted["37"])) {
             if (IHD_items_gained_attr in value) {
-                var crate_type = IHD_get_crate_name(value[IHD_items_gained_attr], false);
+                var crate_type = IHD_get_crate_name(value[IHD_items_gained_attr], IHD_debug_statements);
                 for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
                     if ("name" in value2) {
                         var name = IHD_inverted_dictionary[value2["name"]];
@@ -1482,15 +1667,15 @@ function IHD_get_crate_name(lost_items, bLog) {
         if ("name" in value) {
             var name = IHD_inverted_dictionary[value["name"]];
             if (name.includes("Weapons Case")) {
-                return ["case", "weapon skins", name.substr(0, name.indexOf("Weapons Case")).trim()];
+                return ["case", "Skin Cases", name.substr(0, name.indexOf("Weapons Case")).trim()];
             } else if (name.includes("War Paint Case")) {
-                return ["case", "war paints", name.substr(0, name.indexOf("War Paint Case")).trim()];
+                return ["case", "War Paint Cases", name.substr(0, name.indexOf("War Paint Case")).trim()];
             } else if ((name.includes("War Paint") && name.includes("Keyless Case"))) {
-                return ["case", "war paints", name.substr(0, name.indexOf("Keyless Case")).trim()];
+                return ["case", "War Paint Cases", name.substr(0, name.indexOf("Keyless Case")).trim()];
             } else if (name.includes("Cosmetic Case")) {
-                return ["case", "cosmetic", name.substr(0, name.indexOf("Cosmetic Case")).trim()];
+                return ["case", "Cosmetic Cases", name.substr(0, name.indexOf("Cosmetic Case")).trim()];
             } else if (name.includes("Case") && !name.includes("Key")) { //Praying they don't put "Key" in the name of a future cosmetic case
-                return ["case", "cosmetic", name.substr(0, name.indexOf("Case")).trim()];
+                return ["case", "Cosmetic Cases", name.substr(0, name.indexOf("Case")).trim()];
             } else if (!name.includes("Key") && (name.includes("Supply Munition") || name.includes("Crate")
                 || name.includes("Strongbox") || name.includes("Cooler") || name.includes("Reel"))) {
                 return ["crate", name];
@@ -1519,7 +1704,12 @@ var IHD_ignore_key_totals = {
     "Total Bonus Items": 1,
     "Total Graded Items": 1,
     "Total Item Wears": 1,
-    "Used Items": 1 //Trade ups and crafting
+    "Used Items": 1, //Trade ups and crafting
+    "Australium Dropped Tours": 1,
+    "All Tours": 1,
+    "Total Missions": 1,
+    "Mission Loot Amount Distribution": 1,
+    "Tour Loot Amount Distribution": 1
 }
 function IHD_stats_obj_to_html(obj) {
     var html = "";
@@ -1532,7 +1722,7 @@ function IHD_stats_obj_to_html(obj) {
             }
         } else if (typeof value === "object") {
             const [childHtml, childTotal] = IHD_stats_obj_to_html(value);
-            html += "<br><button class=\"collapsible\">" + key + "(" + childTotal + ")" + "</button>";
+            html += "<br><button class=\"collapsible\">" + key + " (" + childTotal + ")" + "</button>";
             html += "<div class=\"hidden\">" + childHtml + "</div>";
             if (!(key in IHD_ignore_key_totals)) {
                 total += childTotal;
@@ -1578,7 +1768,7 @@ function IHD_enableButton() {
 function IHD_checkForCursorInput() {
     if (document.getElementById("IHD_cursor_input").value) {
         var IHD_text = document.getElementById("IHD_cursor_input").value.split(" ");
-        console.log("IHD - Found starting cursor input of " + IHD_text);
+        IHD_debug_statements ? console.log("IHD - Found starting cursor input of " + IHD_text) : 0;
         g_historyCursor.time = IHD_text[0];
         g_historyCursor.time_frac = IHD_text[1];
         g_historyCursor.s = IHD_text[2];
@@ -1891,6 +2081,13 @@ function IHD_itemsToJson(itemDiv, event) {
                                         IHD_item_json.Wear = IHD_obj.name;
                                     }
                                 }
+                                if (value2.toLowerCase() === "rarity") {
+                                    if (IHD_obj.name in IHD_rarity_map) {
+                                        IHD_item_json.Rarity = IHD_rarity_map[IHD_obj.name];
+                                    } else {
+                                        IHD_item_json.Rarity = IHD_obj.name;
+                                    }
+                                }
                             }
                         }
                     });
@@ -1908,6 +2105,10 @@ function IHD_itemsToJson(itemDiv, event) {
                             IHD_item_json.EOTL = 1;
                         } else if (IHD_obj.value && IHD_obj.value === "( Loaner - Cannot be traded, marketed, crafted, or modified )") {
                             IHD_item_json.Loaner = 1;
+                        } else if (IHD_item_json.Wear && !IHD_item_json.Rarity
+                            && IHD_obj.value && IHD_obj.value.split(" ")[1] === "Grade" && IHD_obj.value.split(" ")[0] in IHD_rarity_map) {
+                            //Getting skin rarity if it wasn't found in category
+                            IHD_item_json.Rarity = IHD_rarity_map[IHD_obj.value.split(" ")[0]];
                         }
                     });
                     if (IHD_spell_count > 0) {
@@ -2720,754 +2921,9 @@ var IHD_Halloween_Bonus = [
     "Corpse Carrier",
     "Aerobatics Demonstrator",
     "Final Frontier Freighter",
-    "Hovering Hotshot"
+    "Hovering Hotshot",
+    "Fiercesome Fluorescence",
+    "Blastphomet",
+    "Carry-Van",
+    "Spyder"
 ]
-
-var IHD_ELITES = [
-    "Corona Australis",
-    "Sucker Slug",
-    "Sand Cannon Rocket Launcher",
-    "Red Rock Roscoe Pistol",
-    "Park Pigmented War Paint",
-    "Liquid Asset Stickybomb Launcher",
-    "Thunderbolt Sniper Rifle",
-    "Killer Bee Scattergun",
-    "Warhawk Rocket Launcher",
-    "Class Crown",
-    "Combustible Cutie",
-    "Potassium Bonnet",
-    "Captain Cardbeard Cutthroat",
-    "Arthropod's Aspect",
-    "Catastrophic Companions",
-    "Rainbow Grenade Launcher",
-    "Rainbow Sniper Rifle",
-    "Rainbow Flame Thrower",
-    "Miami Element War Paint",
-    "Batsaber",
-    "The Bomber Knight",
-    "The Snowmann",
-    "Trapper's Flap",
-    "Festive Rack",
-    "Oh Deer!",
-    "Towering Pile of Presents",
-    "Winterland Wrapped War Paint",
-    "Candy Crown",
-    "Misfortunate War Paint",
-    "Sky Stallion War Paint",
-    "Ballooniphones",
-    "Starlight Serenity War Paint",
-    "Bread Heads",
-    "Sacred Slayer War Paint",
-    "Cranium Cooler",
-    "Full Metal Helmet",
-    "Robin Walkers",
-    "Spectrum Splattered War Paint",
-    "The Aztec Warrior",
-    "The Slithering Scarf",
-    "Texas Toast",
-    "The Peacebreaker",
-    "Rocko",
-    "The Decorated Veteran",
-    "The War Eagle",
-    "Quizzical Quetzal",
-    "Hungover Hero",
-    "Balloonihoodie",
-    "Pyr'o Lantern",
-    "Mister Bones",
-    "Balloonicorpse",
-    "All Hallows' Hatte",
-    "The Lightning Lid",
-    "Flash of Inspiration",
-    "Propaniac",
-    "The Onimann",
-    "The Dead Head",
-    "Bedouin Bandana",
-    "Breadcrab",
-    "Hypno-Eyes",
-    "Hypno-eyes",
-    "Electroshocked War Paint",
-    "Towering Patch of Pumpkins",
-    "Lucky Cat Hat",
-    "Fire Glazed War Paint"
-];
-
-var IHD_ASSASSINS = [
-    "The Giger Counter",
-    "Starduster",
-    "Psychedelic Slugger Revolver",
-    "Purple Range Sniper Rifle",
-    "Sudden Flurry Stickybomb Launcher",
-    "Sax Waxed War Paint",
-    "Yeti Coated War Paint",
-    "Current Event Scattergun",
-    "Pink Elephant Stickybomb Launcher",
-    "Shell Shocker Rocket Launcher",
-    "Warhawk Grenade Launcher",
-    "Red Bear Shotgun",
-    "Warhawk Flame Thrower",
-    "Pestering Jester",
-    "Mo'Horn",
-    "Burly Beast",
-    "El Duderino",
-    "Sheriff's Stetson",
-    "Bruce's Bonnet",
-    "Crusader's Getup",
-    "Grim Tweeter",
-    "Dead'er Alive",
-    "Balloonicorn Sniper Rifle",
-    "Sweet Dreams Grenade Launcher",
-    "Sweet Dreams Stickybomb Launcher",
-    "Balloonicorn Flame Thrower",
-    "Jazzy War Paint",
-    "Mosaic War Paint",
-    "Space Hamster Hammy",
-    "Taunt: Burstchester",
-    "Pyro the Flamedeer",
-    "Snowwing",
-    "The Head Prize",
-    "Motley Sleeves",
-    "Battle Bear",
-    "Colonel Kringle",
-    "The Wooly Pulli",
-    "Merry Cone",
-    "Hat Chocolate",
-    "Jolly Jester",
-    "Towering Pillar of Beanies",
-    "Helm Helm",
-    "The Round-A-Bout",
-    "Smissmas Village War Paint",
-    "Smissmas Camo War Paint",
-    "Smissmas Saxton",
-    "Public Speaker",
-    "Provisions Cap",
-    "Party Phantoms War Paint",
-    "Broken Bones War Paint",
-    "Deadly Dragon War Paint",
-    "Business Class War Paint",
-    "Fast Food",
-    "The Panisher",
-    "Crustaceous Cowl",
-    "Saccharine Striped War Paint",
-    "Frosty Delivery War Paint",
-    "The Dumb Bell",
-    "The Polar Pal",
-    "Millennial Mercenary",
-    "Bonzo Gnawed War Paint",
-    "Ghoul Blaster War Paint",
-    "The Glorious Gambeson",
-    "The Flame Warrior",
-    "Über-Wear",
-    "Uber-Wear",
-    "Cranium Cover",
-    "Brother Mann",
-    "Private Maggot Muncher",
-    "The Cold Case",
-    "The Frag Proof Fragger",
-    "Pumpkin Pied War Paint",
-    "Mummified Mimic War Paint",
-    "Helldriver War Paint",
-    "Bananades",
-    "Sacrificial Stone",
-    "Jungle Wreath",
-    "Bobby Bonnet",
-    "The Bare Necessities",
-    "The Fiery Phoenix",
-    "Unforgiven Glory",
-    "Soda Cap",
-    "Monsieur Grenouille",
-    "Head Banger",
-    "Night Vision Gawkers",
-    "Kazan Karategi",
-    "Jungle Jersey",
-    "Tropical Toad",
-    "The Aztec Aggressor",
-    "The Cat's Pajamas",
-    "The Handsome Hitman",
-    "Coldfront Carapace",
-    "Head of the Dead",
-    "Elizabeth the Third",
-    "The Trick Stabber",
-    "Racc Mann",
-    "Misfortune Fedora",
-    "Wavefinder",
-    "The Fire Tooth",
-    "Wrap-A-Khamon",
-    "Legendary Lid",
-    "Guilden Guardian",
-    "Plumber's Cap",
-    "Road Rage",
-    "Alcoholic Automaton",
-    "Cranial Cowl",
-    "Victorian Villainy",
-    "Dad Duds",
-    "The Dayjogger",
-    "Smoking Jacket",
-    "Loaf Loafers",
-    "Flamehawk",
-    "Hawk Warrior",
-    "Tumor Toasted War Paint",
-    "Ghost Town War Paint",
-    "The Bone Cone",
-    "Gruesome Gourd",
-    "Wandering Wraith",
-    "Terror-antula",
-    "Defragmenting Hard Hat 17%",
-    "Mr. Quackers",
-    "A Well Wrapped Hat",
-    "Freedom Wrapped War Paint",
-    "Dream Piped War Paint",
-    "Bonk Varnished War Paint"
-];
-
-var IHD_COMMANDOS = [
-    "Captain Space Mann",
-    "The Shooting Star",
-    "Rocket Operator",
-    "Night Terror Scattergun",
-    "Carpet Bomber Stickybomb Launcher",
-    "Woodland Warrior Rocket Launcher",
-    "Wrapped Reviver Medi Gun",
-    "Macaw Masked War Paint",
-    "Croc Dusted War Paint",
-    "Piña Polished War Paint",
-    "Flash Fryer Flame Thrower",
-    "Spark of Life Medi Gun",
-    "Dead Reckoner Revolver",
-    "Black Dahlia Pistol",
-    "Sandstone Special Pistol",
-    "Butcher Bird Minigun",
-    "Airwolf Sniper Rifle",
-    "Blitzkrieg Stickybomb Launcher",
-    "Corsair Medi Gun",
-    "Airwolf Knife",
-    "The Toadstool Topper",
-    "Big Topper",
-    "Heavy Tourism",
-    "The Corpus Christi Cranium",
-    "Spirit of the Bombing Past",
-    "Lil' Bitey",
-    "The Physician's Protector",
-    "Outta Sight",
-    "Outta' Sight",
-    "Fortunate Son",
-    "White Russian",
-    "El Caballero",
-    "B'aaarrgh-n-Bicorne",
-    "Iron Lung",
-    "Neptune's Nightmare",
-    "Death Racer's Helmet",
-    "Duck Billed Hatypus",
-    "Mister Cuddles Minigun",
-    "Blue Mew Knife",
-    "Blue Mew Pistol",
-    "Blue Mew Rocket Launcher",
-    "Blue Mew Scattergun",
-    "Shot to Hell Scattergun",
-    "Torqued to Hell Wrench",
-    "Cosmic Calamity War Paint",
-    "Hana War Paint",
-    "Uranium War Paint",
-    "Neo Tokyo War Paint",
-    "The C.A.P.P.E.R",
-    "Phononaut",
-    "Jupiter Jetpack",
-    "Flammable Favor",
-    "The Electric Twanger",
-    "Bomb Beanie",
-    "The Woolen Warmer",
-    "Socked and Loaded",
-    "Infiltrator's Insulation",
-    "Frostbite Bonnet",
-    "Firebrand",
-    "Plaid Lad",
-    "Underminer's Overcoat",
-    "Ol' Reliable",
-    "The Cool Warm Sweater",
-    "Seasonal Spring",
-    "Reindoonihorns",
-    "Elf Ignition",
-    "Train of Thought",
-    "Seasonal Employee",
-    "Elf-Made Bandanna",
-    "Blitzen Bowl",
-    "The Smissmas Sorcerer",
-    "Professional's Pom-Pom",
-    "BedBug Protection",
-    "SandMann's Brush",
-    "Night Ward",
-    "Frost Ornamented War Paint",
-    "Snow Covered War Paint",
-    "Sleighin' Style War Paint",
-    "Discovision",
-    "Winter Wrap Up",
-    "Globetrotter",
-    "Telefragger Toque",
-    "The Mislaid Sweater",
-    "Swashbuckled War Paint",
-    "Neon-ween War Paint",
-    "Polter-Guised War Paint",
-    "Necromanced War Paint",
-    "Steel Brushed War Paint",
-    "Warborn War Paint",
-    "Mechanized Monster War Paint",
-    "Snack Stack",
-    "Water Waders",
-    "Meal Dealer",
-    "Crocodile Dandy",
-    "The Sightliner",
-    "Cookie Fortress War Paint",
-    "Frozen Aurora War Paint",
-    "Elfin Enamel War Paint",
-    "Smissmas Spycrabs War Paint",
-    "The Puggyback",
-    "Harry",
-    "Pocket Admin",
-    "Cool Capuchon",
-    "Miser's Muttonchops",
-    "Metalized Soul War Paint",
-    "Pumpkin Plastered War Paint",
-    "Chilly Autumn War Paint",
-    "Cleaner's Cap",
-    "The Shrapnel Shell",
-    "Hog Heels",
-    "Close Quarters Cover",
-    "The Soho Sleuth",
-    "Hazard Handler",
-    "Preventative Measure",
-    "Prohibition Opposition",
-    "Starboard Crusader",
-    "Scourge of the Sky",
-    "Veteran's Attire",
-    "The Burning Question",
-    "Aristotle",
-    "Blizzard Britches",
-    "Punk's Pomp",
-    "Sweet Toothed War Paint",
-    "Crawlspace Critters War Paint",
-    "Raving Dead War Paint",
-    "Spider's Cluster War Paint",
-    "The Crit Cloak",
-    "Pocket Saxton",
-    "The Hot Huaraches",
-    "Feathered Fiend",
-    "The Conspicuous Camouflage",
-    "Spawn Camper",
-    "Backbreaker's Skullcracker",
-    "Kapitan's Kaftan",
-    "Wagga Wagga Wear",
-    "Speedy Scoundrel",
-    "Dynamite Abs",
-    "Fizzy Pharmacist",
-    "Squatter's Right",
-    "Tropical Camo",
-    "The Hawaiian Hangover",
-    "The Detective",
-    "The Lawnmaker",
-    "The Ripped Rider",
-    "Boston Brain Bucket",
-    "The Hunter in Darkness",
-    "D-eye-monds",
-    "Transparent Trousers",
-    "The Croaking Hazard",
-    "Rifleman's Regalia",
-    "Sledder's Sidekick",
-    "Burning Beanie",
-    "Coldfront Commander",
-    "Wild West Whiskers",
-    "Melody of Misery",
-    "Madmann's Muzzle",
-    "The Horrible Horns",
-    "Skullbrero",
-    "Soviet Strongmann",
-    "Voodoo Vizier",
-    "El Zapateador",
-    "Glow from Below",
-    "Gourd Grin",
-    "Sir Pumpkinton",
-    "Impish Ears",
-    "Eye-See-You",
-    "Semi-Tame Trapper's Hat",
-    "Archer's Sterling",
-    "Pocket Pauling",
-    "Messenger's Mail Bag",
-    "Hawk-Eyed Hunter",
-    "Down Under Duster",
-    "Dustbowl Devil",
-    "The Lavish Labwear",
-    "Road Block",
-    "Safety Stripes",
-    "The Masked Fiend",
-    "Headhunter's Brim",
-    "Herald's Helm",
-    "The Lurking Legionnaire",
-    "Gauzed Gaze",
-    "Patriot's Pouches",
-    "The Flatliner",
-    "Breach and Bomb",
-    "Bird's Eye Viewer",
-    "Hazard Headgear",
-    "Tools of the Tourist",
-    "Momma Kiev",
-    "Skull Study War Paint",
-    "Spectral Shimmered War Paint",
-    "Calavera Canvas War Paint",
-    "The Hook, Line, and Thinker",
-    "Second-Head Headwear",
-    "Alakablamicon",
-    "Goalkeeper",
-    "Eyequarium",
-    "Optic Nerve",
-    "The Tank Top",
-    "Gaelic Glutton",
-    "Athenian Attire",
-    "Pyro in Chinatown",
-    "Dressperado",
-    "Aim Assistant",
-    "The Gift Bringer",
-    "Bonk Batter's Backup",
-    "Winter Backup",
-    "The Chill Chullo",
-    "Bank Rolled War Paint",
-    "Kill Covered War Paint",
-    "Pizza Polished War Paint",
-    "Clover Camo'd War Paint"
-];
-
-
-
-var IHD_MERCS = [
-    "Final Frontiersman",
-    "Phobos Filter",
-    "Universal Translator",
-    "Life Support System",
-    "Night Owl Sniper Rifle",
-    "Woodsy Widowmaker SMG",
-    "Backwoods Boomstick Shotgun",
-    "King of the Jungle Minigun",
-    "Masked Mender Medi Gun",
-    "Forest Fire Flame Thrower",
-    "Anodized Aloha War Paint",
-    "Bamboo Brushed War Paint",
-    "Tiger Buffed War Paint",
-    "Leopard Printed War Paint",
-    "Mannana Peeled War Paint",
-    "Brick House Minigun",
-    "Aqua Marine Rocket Launcher",
-    "Low Profile SMG",
-    "Turbine Torcher Flame Thrower",
-    "Lightning Rod Shotgun",
-    "Blitzkrieg Medi Gun",
-    "Blitzkrieg Pistol",
-    "Blitzkrieg Revolver",
-    "Blitzkrieg SMG",
-    "Airwolf Wrench",
-    "Corsair Scattergun",
-    "Butcher Bird Grenade Launcher",
-    "Blitzkrieg Knife",
-    "Colossal Cranium",
-    "Showstopper",
-    "The Cranial Carcharodon",
-    "Spooktacles",
-    "The El Paso Poncho",
-    "The Wide-Brimmed Bandito",
-    "Nasty Norsemann",
-    "The Surgeon's Sidearms",
-    "Mad Mask",
-    "The Wing Mann",
-    "The Vascular Vestment",
-    "Support Spurs",
-    "Lurker's Leathers",
-    "Commissar's Coat",
-    "Wild West Waistcoat",
-    "Flak Jack",
-    "The Rotation Sensation",
-    "The Hellmet",
-    "Prehistoric Pullover",
-    "Thrilling Tracksuit",
-    "Smokey Sombrero",
-    "El Patron",
-    "The Face of Mercy",
-    "Roboot",
-    "B'aaarrgh-n-Britches",
-    "Blue Mew SMG",
-    "Stabbed to Hell Knife",
-    "Shot to Hell Pistol",
-    "Brain Candy Knife",
-    "Brain Candy Minigun",
-    "Brain Candy Pistol",
-    "Brain Candy Rocket Launcher",
-    "Flower Power Medi Gun",
-    "Flower Power Revolver",
-    "Flower Power Scattergun",
-    "Flower Power Shotgun",
-    "Hazard Warning War Paint",
-    "Damascus and Mahogany War Paint",
-    "Dovetailed War Paint",
-    "Alien Tech War Paint",
-    "Cabin Fevered War Paint",
-    "Polar Surprise War Paint",
-    "Bomber Soul War Paint",
-    "Geometrical Teams War Paint",
-    "The Space Diver",
-    "Cadet Visor",
-    "The Graylien",
-    "A Head Full of Hot Air",
-    "Handy Canes",
-    "Elf Esteem",
-    "Packable Provisions",
-    "Brain-Warming Wear",
-    "Reader's Choice",
-    "Santarchimedes",
-    "Sweet Smissmas Sweater",
-    "Oktoberfester",
-    "Crosshair Cardigan",
-    "Bulb Bonnet",
-    "Cold Blooded Coat",
-    "Partizan",
-    "Glasgow Bankroll",
-    "Arctic Mole",
-    "Heavy Heating",
-    "The Soft Hard Hat",
-    "Lumbercap",
-    "El Fiestibrero",
-    "Gnome Dome",
-    "The Giftcrafter",
-    "Brain Cane",
-    "Cozy Catchers",
-    "Ominous Offering",
-    "Festive Frames",
-    "Mooshanka",
-    "Elf Defense",
-    "Festive Cover-Up",
-    "Particulate Protector",
-    "Elf Care Provider",
-    "Jolly Jingler",
-    "Festive Fascinator",
-    "Candy Cantlers",
-    "Reindoonibeanie",
-    "Shoestring Santa",
-    "Festive Flip-Thwomps",
-    "Bear Walker",
-    "The Killing Tree",
-    "Igloo War Paint",
-    "Seriously Snowed War Paint",
-    "Gift Wrapped War Paint",
-    "Alpine War Paint",
-    "Pebbles the Penguin",
-    "Spiky Viking",
-    "Bumble Beenie",
-    "Gingerbread Mann",
-    "Yule Hog",
-    "Glittering Garland",
-    "The Missing Piece",
-    "Citizen Cane",
-    "Pocket-Medes",
-    "Skull Cracked War Paint",
-    "Simple Spirits War Paint",
-    "Potent Poison War Paint",
-    "Searing Souls War Paint",
-    "Kiln and Conquer War Paint",
-    "Sarsaparilla Sprayed War Paint",
-    "Bomb Carrier War Paint",
-    "Team Serviced War Paint",
-    "Pacific Peacemaker War Paint",
-    "Secretly Serviced War Paint",
-    "Manndatory Attire",
-    "Hook, Line, and Cinder",
-    "Two Punch Mann",
-    "Reel Fly Hat",
-    "Fried Batter",
-    "Wild Brim Slouch",
-    "Brim of Fire",
-    "Roaming Roman",
-    "Thousand-Yard Stare",
-    "Gingerbread Winner War Paint",
-    "Peppermint Swirl War Paint",
-    "Gifting Mann's Wrapping Paper War Paint",
-    "Glacial Glazed War Paint",
-    "Snow Globalization War Paint",
-    "Snowflake Swirled War Paint",
-    "Pocket Pardner",
-    "Climbing Commander",
-    "The Crack Pot",
-    "Juvenile's Jumper",
-    "The Catcher's Companion",
-    "Paka Parka",
-    "Snowcapped",
-    "Wise Whiskers",
-    "Mighty Mitre",
-    "Sunriser War Paint",
-    "Health and Hell War Paint",
-    "Health and Hell (Green) War Paint",
-    "Hypergon War Paint",
-    "Cream Corned War Paint",
-    "Brothers in Blues",
-    "The Firestalker",
-    "The Bushman",
-    "Medical Emergency",
-    "Brimmed Bootlegger",
-    "Heavy Metal",
-    "The Blast Bowl",
-    "Cargo Constructor",
-    "Le Professionnel",
-    "Stealth Bomber",
-    "Antarctic Eyewear",
-    "The Head Hedge",
-    "Tsar Platinum",
-    "Sky High Fly Guy",
-    "The Hot Case",
-    "Assassin's Attire",
-    "Wipe Out Wraps",
-    "The Tundra Top",
-    "Spider's Cluster War Paint",
-    "Candy Coated War Paint",
-    "Portal Plastered War Paint",
-    "Death Deluxe War Paint",
-    "Eyestalker War Paint",
-    "Gourdy Green War Paint",
-    "Spider Season War Paint",
-    "Organ-ically Hellraised War Paint",
-    "Fat Man's Field Cap",
-    "Heavy Harness",
-    "Battle Boonie",
-    "Vitals Vest",
-    "Sharp Chest Pain",
-    "Deity's Dress",
-    "The Cammy Jammies",
-    "Siberian Tigerstripe",
-    "Commando Elite",
-    "Aloha Apparel",
-    "Shutterbug",
-    "Melted Mop",
-    "Wanderer's Wear",
-    "Backbreaker's Guards",
-    "Mediterranean Mercenary",
-    "Stapler's Specs",
-    "The Pompous Privateer",
-    "The Bottle Cap",
-    "Brain Interface",
-    "Dancing Doe",
-    "Undercover Brolly",
-    "The Western Wraps",
-    "Combat Casual",
-    "Hawaiian Hunter",
-    "Barefoot Brawler",
-    "The Chaser",
-    "Tactical Turtleneck",
-    "The Throttlehead",
-    "The Team Player",
-    "Pest's Pads",
-    "Bait and Bite",
-    "The Nuke",
-    "Attack Packs",
-    "The Shellmet",
-    "Forest Footwear",
-    "The Most Dangerous Mane",
-    "The Classy Capper",
-    "The Pithy Professional",
-    "Conaghers' Utility Idol",
-    "Fireman's Essentials",
-    "Pocket Yeti",
-    "Blast Blocker",
-    "Puffy Polar Cap",
-    "The Sinner's Shade",
-    "Polar Bear",
-    "Brass Bucket",
-    "Down Tundra Coat",
-    "Pocket Santa",
-    "The Caribou Companion",
-    "Trucker's Topper",
-    "Bat Hat",
-    "Bread Biter",
-    "Derangement Garment",
-    "El Mostacho",
-    "Candy Cranium",
-    "Convict Cap",
-    "Pocket Halloween Boss",
-    "Party Poncho",
-    "Fuel Injector",
-    "BINOCULUS!",
-    "Calamitous Cauldron",
-    "The Seared Sorcerer",
-    "Goblineer",
-    "Handsome Devil",
-    "A Handsome Handy Thing",
-    "Hollowed Helm",
-    "Flavorful Baggies",
-    "King Cardbeard",
-    "The Boom Boxers",
-    "The Ghoul Box",
-    "Speedster's Spandex",
-    "The Upgrade",
-    "Blast Defense",
-    "Head Mounted Double Observatory",
-    "Field Practice",
-    "Warhood",
-    "Airborne Attire",
-    "Flakcatcher",
-    "Airtight Arsonist",
-    "Starlight Sorcerer",
-    "Nightbane Brim",
-    "Horror Shawl",
-    "Bombard Brigadier",
-    "Beaten and Bruised",
-    "Firearm Protector",
-    "The Imp's Imprint",
-    "Hunting Cloak",
-    "More Gun Marshal",
-    "The Turncoat",
-    "Courtly Cuirass",
-    "Squire's Sabatons",
-    "The Surgical Survivalist",
-    "The Demo's Dustcatcher",
-    "Scoped Spartan",
-    "The Airdog",
-    "Fire Fighter",
-    "Self-Care",
-    "Bazaar Bauble",
-    "Crabe de Chapeau",
-    "Poolside Polo",
-    "California Cap",
-    "Soda Specs",
-    "The Sophisticated Smoker",
-    "The Jarmaments",
-    "Head of Defense",
-    "Spirit of Halloween War Paint",
-    "Horror Holiday War Paint",
-    "Totally Boned War Paint",
-    "Haunted Ghosts War Paint",
-    "Beanie The All-Gnawing",
-    "Twisted Topper",
-    "Spooky Head-Bouncers",
-    "Creepy Crawlers",
-    "Trickster's Treats",
-    "The Scariest Mask EVER",
-    "Hat Outta Hell",
-    "Death Stare",
-    "Smiling Somen",
-    "Mini-Engy",
-    "Deadbeats",
-    "Mann-O-War",
-    "Hephaistos' Handcraft",
-    "Olympic Leapers",
-    "Vampire Vanquisher",
-    "Highway Star",
-    "Bandit's Boots",
-    "Murderer's Motif",
-    "The Arachno-Arsonist",
-    "Shin Shredders",
-    "The Patriot Peak",
-    "The Diplomat",
-    "Siberian Sweater",
-    "Medical Monarch",
-    "Chicago Overcoat",
-    "A Hat to Kill For",
-    "Hot Heels",
-    "Berlin Brain Bowl",
-    "Bunnyhopper's Ballistics Vest",
-    "Quack Canvassed War Paint",
-    "Merc Stained War Paint",
-    "Star Crossed War Paint",
-    "Cardboard Boxed War Paint",
-    "Bloom Buffed War Paint"
-];
