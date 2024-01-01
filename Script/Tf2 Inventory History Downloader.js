@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.7
+// @version      0.7.1
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -359,7 +359,6 @@ function IHD_addButtons(jNode) {
         IHD_stats_button.disabled = false;
     });
     IHD_stop_button.addEventListener("click", () => {
-        IHD_stop_button.disabled = true;
         IHD_enableButton();
     });
     IHD_stats_button.addEventListener("click", () => {
@@ -406,6 +405,12 @@ function IHD_addButtons(jNode) {
                 }
             }
         }, 5000);
+    });
+
+    //Prevent accidently closing the page - At least for firefox this only triggers after the download starts.
+    window.addEventListener('beforeunload', function (e) {
+        e.preventDefault();
+        e.returnValue = '';
     });
 }
 
@@ -1160,6 +1165,7 @@ function IHD_unbox_stats_report() {
         "Crates": {
             "Total Unusuals": {}
         },
+        "Stockings": {},
         "Errors": {}
     };
     var i = 0;
@@ -1173,9 +1179,15 @@ function IHD_unbox_stats_report() {
                         if (!(crate_type[2] in IHD_unbox_obj["Cases"][crate_type[1]])) {
                             IHD_unbox_obj["Cases"][crate_type[1]][crate_type[2]] = {};
                         }
-                    } else { //crate
-                        if (!(crate_type[1] in IHD_unbox_obj["Crates"])) {
-                            IHD_unbox_obj["Crates"][crate_type[1]] = {};
+                    } else { //crate or stocking
+                        if (crate_type[0] === "stocking") {
+                            if (!(crate_type[1] in IHD_unbox_obj["Stockings"])) {
+                                IHD_unbox_obj["Stockings"][crate_type[1]] = {};
+                            }
+                        } else {
+                            if (!(crate_type[1] in IHD_unbox_obj["Crates"])) {
+                                IHD_unbox_obj["Crates"][crate_type[1]] = {};
+                            }
                         }
                     }
                     //Add items; incriment counters
@@ -1260,7 +1272,7 @@ function IHD_unbox_stats_report() {
                                         bonus = false;
                                     }
                                 } else {
-                                    IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Crates", crate_type[1]);
+                                    IHD_stats_add_item_to_obj(IHD_unbox_obj, name, ((crate_type[0] === "stocking") ? "Stockings" : "Crates"), crate_type[1]);
                                 }
                                 //Increment qualities
                                 if ("Quality" in value2) {
@@ -1280,7 +1292,7 @@ function IHD_unbox_stats_report() {
                                             IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], "Unusuals");
                                             IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "All Unusuals");
                                         }
-                                    } else {
+                                    } else if (crate_type[0] === "crate") { //Don't think stockings gave unusuals but just in case
                                         if (quality === "5" && !name.includes("Unusualifier")) { //Unusualifiers ARE NOT unusuals
                                             IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Crates", "Total Unusuals");
                                             IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "All Unusuals");
@@ -1529,7 +1541,7 @@ function IHD_found_report() {
     if ("37" in IHD_events_type_sorted) {
         for (const [key, value] of Object.entries(IHD_events_type_sorted["37"])) {
             if (IHD_items_gained_attr in value) {
-                var crate_type = IHD_get_crate_name(value[IHD_items_gained_attr], IHD_debug_statements);
+                var crate_type = IHD_get_crate_name(value[IHD_items_gained_attr], false); //Do not output debug because we expect non-cases
                 for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
                     if ("name" in value2) {
                         var name = IHD_inverted_dictionary[value2["name"]];
@@ -1659,9 +1671,10 @@ function IHD_blood_money_report() {
 
 }
 
-//Return an array with name data for a case/crate unbox
+//Return an array with name data for a case/crate/stocking unbox
 //Example data for case ["case", case_type, name]
 //Example data for crate ["crate", name]
+//Example data for stocking ["stocking", name]
 function IHD_get_crate_name(lost_items, bLog) {
     for (const [key, value] of Object.entries(lost_items)) {
         if ("name" in value) {
@@ -1676,15 +1689,19 @@ function IHD_get_crate_name(lost_items, bLog) {
                 return ["case", "Cosmetic Cases", name.substr(0, name.indexOf("Cosmetic Case")).trim()];
             } else if (name.includes("Case") && !name.includes("Key")) { //Praying they don't put "Key" in the name of a future cosmetic case
                 return ["case", "Cosmetic Cases", name.substr(0, name.indexOf("Case")).trim()];
+            } else if (name.includes("Gift-Stuffed Stocking")) {
+                return ["stocking", name];
             } else if (!name.includes("Key") && (name.includes("Supply Munition") || name.includes("Crate")
                 || name.includes("Strongbox") || name.includes("Cooler") || name.includes("Reel"))) {
                 return ["crate", name];
             }
         }
     }
+
     if (bLog) {
-        console.log("Couldn't determine crate/case type for " + lost_items);
+        console.log("Couldn't determine crate/case type for " + JSON.stringify(lost_items));
     }
+
     return ["Invalid"];
 }
 
@@ -1754,6 +1771,7 @@ function IHD_enableButton() {
     }
     IHD_download_button.disabled = false;
     IHD_stats_button.disabled = false;
+    IHD_stop_button.disabled = true;
     IHD_ready_to_load = true;
     IHD_json_object.dictionary = IHD_inverted_dictionary;
     IHD_json_object[IHD_start_cursor_attr] = IHD_start_cursor;
@@ -1811,6 +1829,7 @@ function IHD_eventIdToEvent(eventId) {
 //g_historyCursor & g_sessionID is defined on the page this is meant to run on
 //This function basically uses the same code as steam's load more button but with modified instructions
 function IHD_loadMoreItems() {
+    IHD_debug_statements ? console.log("Starting cursor: " + JSON.stringify(g_historyCursor)) : false;
     var request_data = {
         ajax: 1,
         cursor: g_historyCursor,
