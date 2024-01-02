@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.7.1
+// @version      0.7.2
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -20,9 +20,15 @@ var IHD_json_object = {};
 var IHD_file_list;
 var IHD_dictionary = {};
 var IHD_inverted_dictionary = {};
+var IHD_type_dictionary = {};
+var IHD_inverted_type_dictionary = {};
+var IHD_other_dictionary = {};
+var IHD_inverted_other_dictionary = {};
 var IHD_loop;
 var IHD_obj_counter = 0;
 var IHD_dict_counter = 1; //Logic errors when reading if we start at 0 (inverse dictionary can't write a 0 key?)
+var IHD_type_dict_counter = 1;
+var IHD_other_dict_counter = 1;
 var IHD_skipped_asset_counter = 0;
 var IHD_ready_to_load = true;
 var IHD_start_cursor;
@@ -37,6 +43,7 @@ var IHD_items_hold_attr = "items_on_hold";
 var IHD_items_type_attr = "Type";
 var IHD_start_cursor_attr = "starting_cursor";
 var IHD_end_cursor_attr = "ending_cursor";
+var IHD_time_zone_attr = "LocalTimeZone";
 
 //Valve decided to make some item uses a multiple-event thing so these vars will help us track that between event calls
 var IHD_used_temp_obj = {};
@@ -354,6 +361,10 @@ function IHD_addButtons(jNode) {
         IHD_json_object = {};
         IHD_dictionary = {};
         IHD_inverted_dictionary = {};
+        IHD_type_dictionary = {};
+        IHD_inverted_type_dictionary = {};
+        IHD_other_dictionary = {};
+        IHD_inverted_other_dictionary = {};
         IHD_file_list = event.target.files;
         IHD_read_file_objects(await IHD_read_files());
         IHD_stats_button.disabled = false;
@@ -445,7 +456,11 @@ function IHD_read_file_objects(objects) {
             IHD_json_object = IHD_file_json_obj;
             IHD_obj_counter = Object.keys(IHD_json_object).length;
             IHD_dictionary = invertDictionary(IHD_file_json_obj.dictionary);
+            IHD_type_dictionary = invertDictionary(IHD_file_json_obj.type_dictionary);
+            IHD_other_dictionary = invertDictionary(IHD_file_json_obj.other_dictionary);
             IHD_dict_counter = Object.keys(IHD_file_json_obj.dictionary).length + 1;
+            IHD_type_dict_counter = Object.keys(IHD_file_json_obj.type_dictionary).length + 1;
+            IHD_other_dict_counter = Object.keys(IHD_file_json_obj.other_dictionary).length + 1;
             //Get cursors; backwards compatible checks (assuming attr names don't change)
             if (IHD_start_cursor_attr in IHD_file_json_obj) {
                 IHD_start_cursor = IHD_file_json_obj[IHD_start_cursor_attr];
@@ -456,6 +471,8 @@ function IHD_read_file_objects(objects) {
             delete IHD_json_object["dictionary"];
         } else { //2nd+ files need to change our dictionary item values and also our obj counter incriments
             var IHD_file_dictionary = IHD_file_json_obj.dictionary;
+            var IHD_file_type_dictionary = IHD_file_json_obj.type_dictionary;
+            var IHD_file__other_dictionary = IHD_file_json_obj.other_dictionary;
             //Check for cursor crossing; take oldest ending cursor and earliest starting cursor
             var duplicates = false;
             //TODO this probably has an edge case in it
@@ -520,11 +537,11 @@ function IHD_read_file_objects(objects) {
                     for (var k = 0; k < Object.keys(IHD_event).length; k++) {
                         var key = Object.keys(IHD_event)[k];
                         if (key === IHD_items_gained_attr) {
-                            IHD_new_event[IHD_items_gained_attr] = IHD_file_items_handler(IHD_event[IHD_items_gained_attr], IHD_file_dictionary);
+                            IHD_new_event[IHD_items_gained_attr] = IHD_file_items_handler(IHD_event[IHD_items_gained_attr], IHD_file_dictionary, IHD_file_type_dictionary, IHD_file__other_dictionary);
                         } else if (key === IHD_items_lost_attr) {
-                            IHD_new_event[IHD_items_lost_attr] = IHD_file_items_handler(IHD_event[IHD_items_lost_attr], IHD_file_dictionary);
+                            IHD_new_event[IHD_items_lost_attr] = IHD_file_items_handler(IHD_event[IHD_items_lost_attr], IHD_file_dictionary, IHD_file_type_dictionary, IHD_file__other_dictionary);
                         } else if (key === IHD_items_hold_attr) {
-                            IHD_new_event[IHD_items_hold_attr] = IHD_file_items_handler(IHD_event[IHD_items_hold_attr], IHD_file_dictionary);
+                            IHD_new_event[IHD_items_hold_attr] = IHD_file_items_handler(IHD_event[IHD_items_hold_attr], IHD_file_dictionary, IHD_file_type_dictionary, IHD_file__other_dictionary);
                         } else {
                             IHD_new_event[key] = IHD_event[key];
                         }
@@ -536,9 +553,11 @@ function IHD_read_file_objects(objects) {
         }
     }
     IHD_inverted_dictionary = invertDictionary(IHD_dictionary);
+    IHD_inverted_type_dictionary = invertDictionary(IHD_type_dictionary);
+    IHD_inverted_other_dictionary = invertDictionary(IHD_other_dictionary);
 }
 //Take events item groups (gain/lost/hold) from the 2nd+ files and re-assign proper dictionary values to their items
-function IHD_file_items_handler(items, dictionary) {
+function IHD_file_items_handler(items, dictionary, typeDictionary, otherDictionary) {
     var IHD_temp_items = {};
     for (var i = 0; i < Object.keys(items).length; i++) {
         var IHD_temp_item = items[i];
@@ -551,12 +570,12 @@ function IHD_file_items_handler(items, dictionary) {
             IHD_dict_counter++;
         }
         //Type
-        if (IHD_dictionary[dictionary[items[i][IHD_items_type_attr]]] >= 0) {
-            IHD_temp_item[IHD_items_type_attr] = IHD_dictionary[dictionary[items[i][IHD_items_type_attr]]];
+        if (IHD_type_dictionary[typeDictionary[items[i][IHD_items_type_attr]]] >= 0) {
+            IHD_temp_item[IHD_items_type_attr] = IHD_type_dictionary[typeDictionary[items[i][IHD_items_type_attr]]];
         } else {
-            IHD_dictionary[dictionary[items[i][IHD_items_type_attr]]] = IHD_dict_counter;
-            IHD_temp_item[IHD_items_type_attr] = IHD_dict_counter;
-            IHD_dict_counter++;
+            IHD_type_dictionary[typeDictionary[items[i][IHD_items_type_attr]]] = IHD_type_dict_counter;
+            IHD_temp_item[IHD_items_type_attr] = IHD_type_dict_counter;
+            IHD_type_dict_counter++;
         }
         IHD_temp_items[i] = IHD_temp_item;
     }
@@ -621,6 +640,8 @@ function IHD_stats_report() {
     }
     document.getElementById("inventory_history_table").appendChild(IHD_stats_div);
     IHD_inverted_dictionary = invertDictionary(IHD_dictionary);
+    IHD_inverted_type_dictionary = invertDictionary(IHD_type_dictionary);
+    IHD_inverted_other_dictionary = invertDictionary(IHD_other_dictionary);
     //Go through IHD_json_object and sort events by type into their own objects
     //var IHD_obj_size = Object.entries(IHD_json_object).length;
     //var IHD_stats_counter = 0;
@@ -1774,12 +1795,17 @@ function IHD_enableButton() {
     IHD_stop_button.disabled = true;
     IHD_ready_to_load = true;
     IHD_json_object.dictionary = IHD_inverted_dictionary;
+    IHD_json_object.type_dictionary = IHD_inverted_type_dictionary;
+    IHD_json_object.other_dictionary = IHD_inverted_other_dictionary;
     IHD_json_object[IHD_start_cursor_attr] = IHD_start_cursor;
     if (IHD_prev_cursor) {
         IHD_json_object[IHD_end_cursor_attr] = IHD_prev_cursor;
     } else {
         IHD_json_object[IHD_end_cursor_attr] = 0;
     }
+    //Note: potentially conflicting time zones if someone continues a file started in a different timezone
+    //But it is not worth the effort to verify this I think.
+    IHD_json_object[IHD_time_zone_attr] = Intl.DateTimeFormat().resolvedOptions().timeZone;
     IHD_download(JSON.stringify(IHD_json_object), 'inventory_history.json', 'application/json');
 }
 
@@ -2055,6 +2081,33 @@ function IHD_tradeHistoryRowToJson() {
     }
 }
 
+//Add a value to the specified dictionary if it doesn't exist already and return the dictionary id
+//DictionaryType is either name, type, or other
+function IHD_add_to_dict(dictionaryType, value) {
+    if (dictionaryType === "name") {
+        if (!IHD_dictionary[value]) {
+            IHD_dictionary[value] = IHD_dict_counter;
+            IHD_inverted_dictionary[IHD_dict_counter] = value;
+            IHD_dict_counter++;
+        }
+        return IHD_dictionary[value];
+    } else if (dictionaryType === "type") {
+        if (!IHD_type_dictionary[value]) {
+            IHD_type_dictionary[value] = IHD_type_dict_counter;
+            IHD_inverted_type_dictionary[IHD_type_dict_counter] = value;
+            IHD_type_dict_counter++;
+        }
+        return IHD_type_dictionary[value];
+    } else if (dictionaryType === "other") {
+        if (!IHD_other_dictionary[value]) {
+            IHD_other_dictionary[value] = IHD_other_dict_counter;
+            IHD_inverted_other_dictionary[IHD_other_dict_counter] = value;
+            IHD_other_dict_counter++;
+        }
+        return IHD_other_dictionary[value];
+    }
+}
+
 //g_rgDescriptions is defined on the page this is meant to run on
 function IHD_itemsToJson(itemDiv, event) {
     var IHD_items_json = {};
@@ -2128,6 +2181,21 @@ function IHD_itemsToJson(itemDiv, event) {
                             && IHD_obj.value && IHD_obj.value.split(" ")[1] === "Grade" && IHD_obj.value.split(" ")[0] in IHD_rarity_map) {
                             //Getting skin rarity if it wasn't found in category
                             IHD_item_json.Rarity = IHD_rarity_map[IHD_obj.value.split(" ")[0]];
+                        } else if (IHD_obj.value && IHD_obj.value.startsWith("Killstreaker: ")) {
+                            var IHD_kser = IHD_obj.value.substr(14).trim();
+                            IHD_kser = IHD_kser.replace(")", "");
+                            IHD_item_json.Killstreaker = IHD_add_to_dict("other", IHD_kser);
+                        } else if (IHD_obj.value && IHD_obj.value.startsWith("Sheen: ")) {
+                            var IHD_sheen = IHD_obj.value.substr(7).trim();
+                            IHD_sheen = IHD_sheen.replace(")", "");
+                            IHD_item_json.Sheen = IHD_add_to_dict("other", IHD_sheen);
+                        } else if (IHD_obj.value && IHD_obj.value.includes("Killstreaker: ") && IHD_obj.value.includes("Sheen: ")) {
+                            IHD_kser = IHD_obj.value.substr(15, IHD_obj.value.indexOf(",") - 15).trim();
+                            IHD_kser = IHD_kser.replace(")", "");
+                            IHD_sheen = IHD_obj.value.substr(IHD_obj.value.indexOf("Sheen: ") + 7).trim();
+                            IHD_sheen = IHD_sheen.replace(")", "");
+                            IHD_item_json.Killstreaker = IHD_add_to_dict("other", IHD_kser);
+                            IHD_item_json.Sheen = IHD_add_to_dict("other", IHD_sheen);
                         }
                     });
                     if (IHD_spell_count > 0) {
@@ -2138,14 +2206,7 @@ function IHD_itemsToJson(itemDiv, event) {
                     IHD_item_json.Quality = value.quality;
                 }
                 if (key === "market_hash_name") {
-                    if (IHD_dictionary[value]) {
-                        IHD_item_json.name = IHD_dictionary[value];
-                    } else {
-                        IHD_dictionary[value] = IHD_dict_counter;
-                        IHD_inverted_dictionary[IHD_dict_counter] = value;
-                        IHD_item_json.name = IHD_dict_counter;
-                        IHD_dict_counter++;
-                    }
+                    IHD_item_json.name = IHD_add_to_dict("name", value);
                 }
                 if (key === "type" && value.length > 0) {
                     if (value.includes("Level")) {
@@ -2157,23 +2218,9 @@ function IHD_itemsToJson(itemDiv, event) {
                             }
                         }
                         var type = value.slice(value.indexOf(IHD_item_json.Level) + IHD_item_json.Level.length).trim();
-                        if (IHD_dictionary[type]) {
-                            IHD_item_json[IHD_items_type_attr] = IHD_dictionary[type];
-                        } else {
-                            IHD_dictionary[type] = IHD_dict_counter;
-                            IHD_inverted_dictionary[IHD_dict_counter] = type;
-                            IHD_item_json[IHD_items_type_attr] = IHD_dict_counter;
-                            IHD_dict_counter++;
-                        }
+                        IHD_item_json[IHD_items_type_attr] = IHD_add_to_dict("type", type);
                     } else {
-                        if (IHD_dictionary[value]) {
-                            IHD_item_json[IHD_items_type_attr] = IHD_dictionary[value];
-                        } else {
-                            IHD_dictionary[value] = IHD_dict_counter;
-                            IHD_inverted_dictionary[IHD_dict_counter] = value;
-                            IHD_item_json[IHD_items_type_attr] = IHD_dict_counter;
-                            IHD_dict_counter++;
-                        }
+                        IHD_item_json[IHD_items_type_attr] = IHD_add_to_dict("type", value);
                     }
                 }
             }
