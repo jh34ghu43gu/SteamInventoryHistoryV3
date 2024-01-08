@@ -15,17 +15,17 @@
  * More detailed stats for tradeups
    * All 5 types of grade trade-ups have their own stats and each specific trade-up is also stored
 
- ## 0.7.3
+ ### 0.7.3
  * Fix crash when trying to make a stats report due to the timezone data
  * Correct tour counts in 'MvM Tours' stat report
 
- ## 0.7.2 (NOT BACKWARDS COMPATABILE WITH PRIOR DOWNLOADS)
+ ### 0.7.2 (NOT BACKWARDS COMPATABILE WITH PRIOR DOWNLOADS)
  * Prep for some global stats (#15)
    * Item types and names use seperate dictionaries
    * Additional other dictionary, currently stores sheen and killstreakers
  * User's local timezone is stored in the download file to help with data crunching in the future (#19)
 
- ## 0.7.1
+ ### 0.7.1
  * Confirmation popup when trying to leave/close page after download starts (Issue #10)
  * Unbox stats includes stockings now (previously this was populating the 'error' category)
  * Made a debug statement actually output useful text (Issue #13)
