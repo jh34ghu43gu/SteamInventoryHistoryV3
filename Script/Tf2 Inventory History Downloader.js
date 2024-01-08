@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.7.3
+// @version      0.7.4
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -1344,31 +1344,122 @@ function IHD_unbox_stats_report() {
 function IHD_tradeup_report() {
     var IHD_tradeup_obj = {
         "Stat Clocks": {
-            "Used Items": {
+            "Total Used Items": {
                 "Strange": {},
                 "Unique": {},
                 "Unique Paints": {}
             },
-            "Created Items": {}
+            "Total Created Items": {},
+            "Trade-Ups": {}
         },
         "Item Grade Trade-Ups": {
-            "Used Items": {
+            "Total Used Items": {
                 "Strange": {},
                 "Unique": {},
                 "Unique Paints": {}
             },
-            "Created Items": {
+            "Total Created Items": {
                 "Strange": {},
                 "Unique": {},
                 "Unique Paints": {}
+            },
+            "Civilian to Freelance": {
+                "Used Items": {
+                    "Strange": {},
+                    "Unique": {},
+                    "Unique Paints": {}
+                },
+                "Created Items": {
+                    "Strange": {},
+                    "Unique": {},
+                    "Unique Paints": {}
+                },
+                "Trade-Ups": {}
+            },
+            "Freelance to Mercenary": {
+                "Used Items": {
+                    "Strange": {},
+                    "Unique": {},
+                    "Unique Paints": {}
+                },
+                "Created Items": {
+                    "Strange": {},
+                    "Unique": {},
+                    "Unique Paints": {}
+                },
+                "Trade-Ups": {}
+            },
+            "Mercenary to Commando": {
+                "Used Items": {
+                    "Strange": {},
+                    "Unique": {},
+                    "Unique Paints": {}
+                },
+                "Created Items": {
+                    "Strange": {},
+                    "Unique": {},
+                    "Unique Paints": {}
+                },
+                "Trade-Ups": {}
+            },
+            "Commando to Assassin": {
+                "Used Items": {
+                    "Strange": {},
+                    "Unique": {},
+                    "Unique Paints": {}
+                },
+                "Created Items": {
+                    "Strange": {},
+                    "Unique": {},
+                    "Unique Paints": {}
+                },
+                "Trade-Ups": {}
+            },
+            "Assassin to Elite": {
+                "Used Items": {
+                    "Strange": {},
+                    "Unique": {},
+                    "Unique Paints": {}
+                },
+                "Created Items": {
+                    "Strange": {},
+                    "Unique": {},
+                    "Unique Paints": {}
+                },
+                "Trade-Ups": {}
+            },
+            "Errors": {
+                "Used Items": {
+                    "Strange": {},
+                    "Unique": {},
+                    "Unique Paints": {}
+                },
+                "Created Items": {
+                    "Strange": {},
+                    "Unique": {},
+                    "Unique Paints": {}
+                },
+                "Trade-Ups": {}
             }
         }
     }
     if ("10" in IHD_events_type_sorted) {
+        var ClockCounter = 0;
+        var CivToFreeCounter = 0;
+        var FreeToMercCounter = 0;
+        var MercToCommCounter = 0;
+        var CommToAssCounter = 0;
+        var AssToEliteCounter = 0;
+        var MysToMysCounter = 0;
         for (const [key, value] of Object.entries(IHD_events_type_sorted["10"])) {
+            var tradeup_obj = {
+                "Lost": {},
+                "Gained": {}
+            };
             var type = "Item Grade Trade-Ups";
+            var grade = "";
             if (IHD_items_lost_attr in value) {
-                if (Object.keys(value[IHD_items_lost_attr]).length === 5) {
+                if (Object.keys(value[IHD_items_lost_attr]).length === 5) { //Gambling we don't have exactly 5 missing assets
                     type = "Stat Clocks";
                 } else if (Object.keys(value[IHD_items_lost_attr]).length < 10) {
                     console.warn("Trade up only had " + Object.keys(value[IHD_items_lost_attr]).length + " items instead of expected 10.");
@@ -1376,6 +1467,32 @@ function IHD_tradeup_report() {
                 }
 
                 for (const [key2, value2] of Object.entries(value[IHD_items_lost_attr])) {
+                    if (type.startsWith("Item") && "Rarity" in value2 && grade.length === 0) { //Only need to do this once
+                        switch (value2["Rarity"]) {
+                            case 0:
+                                grade = "Civilian to Freelance";
+                                break;
+                            case 1:
+                                grade = "Freelance to Mercenary";
+                                break;
+                            case 2:
+                                grade = "Mercenary to Commando";
+                                break;
+                            case 3:
+                                grade = "Commando to Assassin";
+                                break;
+                            case 4:
+                                grade = "Assassin to Elite";
+                                break;
+                            default:
+                                console.warn("Unrecognized rarity value " + value2["Rarity"] + " for trade up event #" + key + ". This event will be marked as an error.");
+                                grade = "Errors";
+                                break;
+                        }
+                    } else if (type.startsWith("Item") && grade.length === 0) {
+                        console.warn("Couldn't find a rarity in the first item lost for trade up #" + key + ". This event will be marked as an error.");
+                        grade = "Errors";
+                    }
                     if ("Quality" in value2) {
                         var quality = value2["Quality"];
                         if (quality === "6") {
@@ -1386,19 +1503,24 @@ function IHD_tradeup_report() {
                             quality = "Unique Paints";
                         } else {
                             console.warn("Somehow quality for tradeup was not unique or strange and was instead: " + quality);
-                            if (!("Errors" in IHD_tradeup_obj[type]["Used Items"])) {
-                                IHD_tradeup_obj[type]["Used Items"]["Errors"] = {};
-                            }
-                            quality = "Errors";
+                            quality = "Error";
                         }
                         if ("name" in value2) {
                             var name = IHD_inverted_dictionary[value2["name"]];
-                            IHD_stats_add_item_to_obj(IHD_tradeup_obj, name, type, "Used Items", quality);
+                            IHD_stats_add_item_to_obj(IHD_tradeup_obj, name, type, "Total Used Items", quality);
+                            if (type.startsWith("Item")) {
+                                IHD_stats_add_item_to_obj(IHD_tradeup_obj, name, type, grade, "Used Items", quality);
+                            }
+                            IHD_stats_add_item_to_obj(tradeup_obj, name, "Lost");
                         }
                     } else {
                         if ("name" in value2) {
                             name = IHD_inverted_dictionary[value2["name"]];
-                            IHD_stats_add_item_to_obj(IHD_tradeup_obj, name, type, "Used Items");
+                            IHD_stats_add_item_to_obj(IHD_tradeup_obj, name, type, "Total Used Items");
+                            if (type.startsWith("Item")) {
+                                IHD_stats_add_item_to_obj(IHD_tradeup_obj, name, type, grade, "Used Items");
+                            }
+                            IHD_stats_add_item_to_obj(tradeup_obj, name, "Lost");
                         }
                     }
                 }
@@ -1415,26 +1537,56 @@ function IHD_tradeup_report() {
                             quality = "Unique Paints";
                         } else {
                             console.warn("Somehow quality for tradeup was not unique or strange and was instead: " + quality);
-                            if (!("Errors" in IHD_tradeup_obj[type]["Created Items"])) {
-                                IHD_tradeup_obj[type]["Created Items"]["Errors"] = {};
+                            if (!("Errors" in IHD_tradeup_obj[type]["Total Created Items"])) {
+                                IHD_tradeup_obj[type]["Total Created Items"]["Errors"] = {};
                             }
                             quality = "Errors";
                         }
                         if ("name" in value2) {
                             name = IHD_inverted_dictionary[value2["name"]];
                             if (type === "Stat Clocks") {
-                                IHD_stats_add_item_to_obj(IHD_tradeup_obj, name, type, "Created Items");
+                                IHD_stats_add_item_to_obj(IHD_tradeup_obj, name, type, "Total Created Items");
                             } else {
-                                IHD_stats_add_item_to_obj(IHD_tradeup_obj, name, type, "Created Items", quality);
+                                IHD_stats_add_item_to_obj(IHD_tradeup_obj, name, type, "Total Created Items", quality);
+                                if (type.startsWith("Item")) {
+                                    IHD_stats_add_item_to_obj(IHD_tradeup_obj, name, type, grade, "Created Items", quality);
+                                }
+                                IHD_stats_add_item_to_obj(tradeup_obj, name, "Gained");
                             }
                         }
                     } else {
                         if ("name" in value2) {
                             name = IHD_inverted_dictionary[value2["name"]];
-                            IHD_stats_add_item_to_obj(IHD_tradeup_obj, name, type, "Created Items");
+                            IHD_stats_add_item_to_obj(IHD_tradeup_obj, name, type, "Total Created Items");
+                            if (type.startsWith("Item")) {
+                                IHD_stats_add_item_to_obj(IHD_tradeup_obj, name, type, grade, "Created Items", quality);
+                            }
+                            IHD_stats_add_item_to_obj(tradeup_obj, name, "Gained");
                         }
                     }
                 }
+            }
+            if (type.startsWith("Stat")) {
+                ClockCounter++;
+                IHD_tradeup_obj[type]["Trade-Ups"][ClockCounter] = tradeup_obj;
+            } else if (grade.startsWith("Civ")) {
+                CivToFreeCounter++;
+                IHD_tradeup_obj[type][grade]["Trade-Ups"][CivToFreeCounter] = tradeup_obj;
+            } else if (grade.startsWith("Free")) {
+                FreeToMercCounter++;
+                IHD_tradeup_obj[type][grade]["Trade-Ups"][FreeToMercCounter] = tradeup_obj;
+            } else if (grade.startsWith("Merc")) {
+                MercToCommCounter++;
+                IHD_tradeup_obj[type][grade]["Trade-Ups"][MercToCommCounter] = tradeup_obj;
+            } else if (grade.startsWith("Com")) {
+                CommToAssCounter++;
+                IHD_tradeup_obj[type][grade]["Trade-Ups"][CommToAssCounter] = tradeup_obj;
+            } else if (grade.startsWith("Ass")) {
+                AssToEliteCounter++;
+                IHD_tradeup_obj[type][grade]["Trade-Ups"][AssToEliteCounter] = tradeup_obj;
+            } else {
+                MysToMysCounter++;
+                IHD_tradeup_obj[type]["Errors"]["Trade-Ups"][MysToMysCounter] = tradeup_obj;
             }
         }
     }
@@ -1743,6 +1895,14 @@ var IHD_ignore_key_totals = {
     "Total Graded Items": 1,
     "Total Item Wears": 1,
     "Used Items": 1, //Trade ups and crafting
+    "Total Used Items": 1,
+    "Civilian to Freelance": 1, //Note: cannot use 'Total Created Items' as that ruins stat clock counter
+    "Freelance to Mercenary": 1,
+    "Mercenary to Commando": 1,
+    "Commando to Assassin": 1,
+    "Assassin to Elite": 1,
+    "Trade-Ups": 1,
+    //"Errors": 1,
     "Australium Dropped Tours": 1,
     "All Tours": 1,
     "Total Missions": 1,
