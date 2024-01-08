@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.7.2
+// @version      0.7.3
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -650,7 +650,7 @@ function IHD_stats_report() {
         //if (((IHD_stats_counter / IHD_obj_size) * 100) % 2 === 0) {
         //    IHD_stats_progress_label.innerText = "Progress: " + ((IHD_stats_counter / IHD_obj_size) * 100) + "%";
         //}
-        if ("event" in value) {
+        if (key !== IHD_time_zone_attr && "event" in value) {
             if (!(value["event"] in IHD_events_type_sorted)) {
                 IHD_events_type_sorted[value["event"]] = {};
             }
@@ -1747,7 +1747,8 @@ var IHD_ignore_key_totals = {
     "All Tours": 1,
     "Total Missions": 1,
     "Mission Loot Amount Distribution": 1,
-    "Tour Loot Amount Distribution": 1
+    "Tour Loot Amount Distribution": 1,
+    "Dry Streaks": 1
 }
 function IHD_stats_obj_to_html(obj) {
     var html = "";
