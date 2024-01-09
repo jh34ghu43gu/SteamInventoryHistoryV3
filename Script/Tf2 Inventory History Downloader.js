@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.7.4
+// @version      0.7.5
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -658,6 +658,7 @@ function IHD_stats_report() {
         }
         //IHD_stats_counter++;
     }
+    IHD_global_stats_report();
     IHD_mvm_stats_report();
     IHD_unbox_stats_report();
     IHD_tradeup_report();
@@ -720,6 +721,36 @@ function IHD_stats_add_item_to_obj(obj, name, child, child2, child3, child4) {
             obj[name] = 1;
         }
     }
+}
+
+function IHD_global_stats_report() {
+    var IHD_global_stats_obj = {
+        "Total events": IHD_obj_counter,
+        "Total Items": IHD_dict_counter - 1,
+        "Total Items Created": 0,
+        "Event Breakdown": {} //Keep this one last
+    }
+
+    for (var i = 0; i <= IHD_inventory_modifications_list.length; i++) {
+        var eventType = "" + i;
+        if (eventType in IHD_events_type_sorted) {
+            IHD_global_stats_obj["Event Breakdown"][IHD_inventory_modifications_list[eventType]] = Object.keys(IHD_events_type_sorted[eventType]).length;
+        }
+    }
+
+    //Another one for trade related
+    for (i = 0; i <= IHD_inventory_modifications_list_special_names.length; i++) {
+        eventType = "" + (IHD_special_event_modifier + i);
+        if (eventType in IHD_events_type_sorted) {
+            if (IHD_inventory_modifications_list_special_names["" + i] in IHD_global_stats_obj["Event Breakdown"]) { //Traded is used twice bc ofc
+                IHD_global_stats_obj["Event Breakdown"][IHD_inventory_modifications_list_special_names["" + i]] += Object.keys(IHD_events_type_sorted[eventType]).length;
+            } else {
+                IHD_global_stats_obj["Event Breakdown"][IHD_inventory_modifications_list_special_names["" + i]] = Object.keys(IHD_events_type_sorted[eventType]).length;
+            }
+        }
+    }
+
+    document.getElementById("IHD_stats_div").innerHTML += "<br><div class=\"mvm\"><h2>MvM Loot</h2></div>" + IHD_stats_obj_to_html(IHD_global_stats_obj)[0] + "<br>";
 }
 
 //Mvm mission and surplus rewards
@@ -2338,8 +2369,8 @@ function IHD_itemsToJson(itemDiv, event) {
                             IHD_item_json.EOTL = 1;
                         } else if (IHD_obj.value && IHD_obj.value === "( Loaner - Cannot be traded, marketed, crafted, or modified )") {
                             IHD_item_json.Loaner = 1;
-                        } else if (IHD_item_json.Wear && !IHD_item_json.Rarity
-                            && IHD_obj.value && IHD_obj.value.split(" ")[1] === "Grade" && IHD_obj.value.split(" ")[0] in IHD_rarity_map) {
+                        } else if (!IHD_item_json.Rarity && IHD_obj.value
+                            && IHD_obj.value.split(" ")[1] === "Grade" && IHD_obj.value.split(" ")[0] in IHD_rarity_map) {
                             //Getting skin rarity if it wasn't found in category
                             IHD_item_json.Rarity = IHD_rarity_map[IHD_obj.value.split(" ")[0]];
                         } else if (IHD_obj.value && IHD_obj.value.startsWith("Killstreaker: ")) {
