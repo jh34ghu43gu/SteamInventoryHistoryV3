@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.7.5
+// @version      0.8
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -16,7 +16,19 @@
 
 //NOTE: Need a breadbox opening from someone else to make sure gifted unboxes from that are recorded right, when the data display part is done
 console.log("Tf2 Inventory History Downloader Script is active.");
-var IHD_json_object = {};
+//Attribute names
+var IHD_events_attr = "Events"
+var IHD_items_gained_attr = "Gained";
+var IHD_items_lost_attr = "Lost";
+var IHD_items_hold_attr = "items_on_hold";
+var IHD_items_type_attr = "Type";
+var IHD_start_cursor_attr = "starting_cursor";
+var IHD_end_cursor_attr = "ending_cursor";
+var IHD_time_zone_attr = "LocalTimeZone";
+
+var IHD_json_object = {
+    [IHD_events_attr]: {}
+};
 var IHD_file_list;
 var IHD_dictionary = {};
 var IHD_inverted_dictionary = {};
@@ -36,14 +48,7 @@ var IHD_prev_cursor;
 var IHD_retry_counter = 0;
 var IHD_max_retries = 100; //Retry on errors (not 429) this many times.
 var IHD_debug_statements = false;
-//Attribute names
-var IHD_items_gained_attr = "Gained";
-var IHD_items_lost_attr = "Lost";
-var IHD_items_hold_attr = "items_on_hold";
-var IHD_items_type_attr = "Type";
-var IHD_start_cursor_attr = "starting_cursor";
-var IHD_end_cursor_attr = "ending_cursor";
-var IHD_time_zone_attr = "LocalTimeZone";
+
 
 //Valve decided to make some item uses a multiple-event thing so these vars will help us track that between event calls
 var IHD_used_temp_obj = {};
@@ -358,7 +363,9 @@ function IHD_addButtons(jNode) {
         }
     });
     IHD_file_input.addEventListener('change', async (event) => {
-        IHD_json_object = {};
+        IHD_json_object = {
+            [IHD_events_attr]: {}
+        };
         IHD_dictionary = {};
         IHD_inverted_dictionary = {};
         IHD_type_dictionary = {};
@@ -454,14 +461,13 @@ function IHD_read_file_objects(objects) {
         //First file is very simple; just copying everything and making sure to incriment our values accordingly
         if (Object.keys(IHD_dict_counter).length === 0 && Object.keys(IHD_obj_counter).length === 0) {
             IHD_json_object = IHD_file_json_obj;
-            IHD_obj_counter = Object.keys(IHD_json_object).length;
+            IHD_obj_counter = Object.keys(IHD_json_object[IHD_events_attr]).length;
             IHD_dictionary = invertDictionary(IHD_file_json_obj.dictionary);
             IHD_type_dictionary = invertDictionary(IHD_file_json_obj.type_dictionary);
             IHD_other_dictionary = invertDictionary(IHD_file_json_obj.other_dictionary);
             IHD_dict_counter = Object.keys(IHD_file_json_obj.dictionary).length + 1;
             IHD_type_dict_counter = Object.keys(IHD_file_json_obj.type_dictionary).length + 1;
             IHD_other_dict_counter = Object.keys(IHD_file_json_obj.other_dictionary).length + 1;
-            //Get cursors; backwards compatible checks (assuming attr names don't change)
             if (IHD_start_cursor_attr in IHD_file_json_obj) {
                 IHD_start_cursor = IHD_file_json_obj[IHD_start_cursor_attr];
             }
@@ -510,10 +516,10 @@ function IHD_read_file_objects(objects) {
             }
             if (duplicates) {
                 //Setup an object that sorts objects by times for quick checking against duplicates
-                for (var time_count = 0; time_count < Object.keys(IHD_json_object); time_count++) {
-                    if (!(Object.keys(IHD_json_object)[time_count] === "dictionary")) {
-                        IHD_duplicate_times[IHD_json_object[time_count].time] = time_count;
-                        IHD_duplicate_times[IHD_json_object[time_count].time][time_count] = IHD_json_object[time_count];
+                for (var time_count = 0; time_count < Object.keys(IHD_json_object[IHD_events_attr]); time_count++) {
+                    if (!(Object.keys(IHD_json_object[IHD_events_attr])[time_count] === "dictionary")) {
+                        IHD_duplicate_times[IHD_json_object[IHD_events_attr][time_count].time] = time_count;
+                        IHD_duplicate_times[IHD_json_object[IHD_events_attr][time_count].time][time_count] = IHD_json_object[IHD_events_attr][time_count];
                     }
                 }
                 IHD_debug_statements ? console.log("Found duplicate time: " + IHD_duplicate_times) : 0;
@@ -546,11 +552,14 @@ function IHD_read_file_objects(objects) {
                             IHD_new_event[key] = IHD_event[key];
                         }
                     }
-                    IHD_json_object[IHD_obj_counter] = IHD_new_event;
+                    IHD_json_object[IHD_events_attr][IHD_obj_counter] = IHD_new_event;
                     IHD_obj_counter++;
                 }
             }
         }
+    }
+    if (IHD_prev_cursor) {
+        document.getElementById("IHD_cursor_input").value = IHD_prev_cursor["time"] + " " + IHD_prev_cursor["time_frac"] + " " + IHD_prev_cursor["s"];
     }
     IHD_inverted_dictionary = invertDictionary(IHD_dictionary);
     IHD_inverted_type_dictionary = invertDictionary(IHD_type_dictionary);
@@ -643,20 +652,13 @@ function IHD_stats_report() {
     IHD_inverted_type_dictionary = invertDictionary(IHD_type_dictionary);
     IHD_inverted_other_dictionary = invertDictionary(IHD_other_dictionary);
     //Go through IHD_json_object and sort events by type into their own objects
-    //var IHD_obj_size = Object.entries(IHD_json_object).length;
-    //var IHD_stats_counter = 0;
-    //var IHD_stats_progress_label = $("#IHD_stats_progress_label");
-    for (const [key, value] of Object.entries(IHD_json_object)) {
-        //if (((IHD_stats_counter / IHD_obj_size) * 100) % 2 === 0) {
-        //    IHD_stats_progress_label.innerText = "Progress: " + ((IHD_stats_counter / IHD_obj_size) * 100) + "%";
-        //}
-        if (key !== IHD_time_zone_attr && "event" in value) {
+    for (const [key, value] of Object.entries(IHD_json_object[IHD_events_attr])) {
+        if ("event" in value) {
             if (!(value["event"] in IHD_events_type_sorted)) {
                 IHD_events_type_sorted[value["event"]] = {};
             }
             IHD_events_type_sorted[value["event"]][key] = value;
         }
-        //IHD_stats_counter++;
     }
     IHD_global_stats_report();
     IHD_mvm_stats_report();
@@ -1110,6 +1112,9 @@ function IHD_mvm_stats_report() {
 function IHD_unbox_stats_report() {
     var IHD_unbox_obj = {
         "All Unusuals": {},
+        "Drystreaks": {
+            "Current Drystreak": 0
+        },
         "Cases": {
             "Total Graded Items": {
                 "Elite": 0,
@@ -1220,152 +1225,167 @@ function IHD_unbox_stats_report() {
         "Stockings": {},
         "Errors": {}
     };
-    var i = 0;
+    var errorCounter = 0;
+    var drystreakCounter = 0;
     if ("8" in IHD_events_type_sorted) {
-        for (const [key, value] of Object.entries(IHD_events_type_sorted["8"])) {
-            if (IHD_items_lost_attr in value) {
-                var crate_type = IHD_get_crate_name(value[IHD_items_lost_attr], IHD_debug_statements);
-                if (crate_type.length > 1) {
-                    //Set crate name in appropriate object
-                    if (crate_type.length > 2) { //case
-                        if (!(crate_type[2] in IHD_unbox_obj["Cases"][crate_type[1]])) {
-                            IHD_unbox_obj["Cases"][crate_type[1]][crate_type[2]] = {};
-                        }
-                    } else { //crate or stocking
-                        if (crate_type[0] === "stocking") {
-                            if (!(crate_type[1] in IHD_unbox_obj["Stockings"])) {
-                                IHD_unbox_obj["Stockings"][crate_type[1]] = {};
-                            }
-                        } else {
-                            if (!(crate_type[1] in IHD_unbox_obj["Crates"])) {
-                                IHD_unbox_obj["Crates"][crate_type[1]] = {};
-                            }
-                        }
-                    }
-                    //Add items; incriment counters
-                    if (IHD_items_gained_attr in value) {
-                        for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
-                            if ("name" in value2) {
-                                var name = IHD_inverted_dictionary[value2["name"]];
-                                if ("Effect" in value2) {
-                                    name = "★ " + value2["Effect"] + " ★ " + name;
+        //Since the event ids are kinda random we just have to brute force check all
+        //of them up to what we currently have the obj_counter at.
+        //And reverse it so we can track drystreaks
+        for (var unboxNum = IHD_obj_counter - 1; unboxNum >= 0; unboxNum--) {
+            //for (const [key, value] of Object.entries(IHD_events_type_sorted["8"])) {
+            if (unboxNum in IHD_events_type_sorted["8"]) {
+                var value = IHD_events_type_sorted["8"][unboxNum];
+                if (IHD_items_lost_attr in value) {
+                    var crate_type = IHD_get_crate_name(value[IHD_items_lost_attr], IHD_debug_statements);
+                    if (crate_type.length > 1) {
+                        //Set crate name in appropriate object
+                        if (crate_type.length > 2) { //case
+                            if (!(crate_type[2] in IHD_unbox_obj["Cases"][crate_type[1]])) {
+                                IHD_unbox_obj["Cases"][crate_type[1]][crate_type[2]] = {};
+                                if (crate_type[2].startsWith("'Decorated War Hero'") || crate_type[2].startsWith("'Contract Campaigner'")) {
+                                    drystreakCounter--;
                                 }
-                                var bonus = true;
-                                //Add the names
-                                if (crate_type.length > 2) {
-                                    //Bonus items 
-                                    if (IHD_paint_list.includes(name)) { //Paint
-                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", "Total Bonus Items", "Paint");
-                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], "Bonus Items", "Paint");
-                                    } else if (IHD_tool_list.includes(name)) { //Tools
-                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", "Total Bonus Items", "Tools");
-                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], "Bonus Items", "Tools");
-                                    } else if (name.includes("Strange Part: ")) { //Strange parts
-                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", "Total Bonus Items", "Strange Parts");
-                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], "Bonus Items", "Strange Parts");
-                                    } else if (name.includes("Unusualifier")) { //Unusualifiers
-                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", "Total Bonus Items", "Unusualifiers");
-                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], "Bonus Items", "Unusualifiers");
-                                    } else if (IHD_Halloween_Bonus.includes(name) || IHD_Halloween_Bonus.includes(name.replace("The ", ""))) { //Bonus Halloween Cosmetics
-                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", "Total Bonus Items", "Halloween Bonus");
-                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], "Bonus Items", "Halloween Bonus");
-                                    } else if (name === "Tour of Duty Ticket" || name === "Strange Count Transfer Tool") { //ToD and stat transfer
-                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", "Total Bonus Items");
-                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], "Bonus Items");
-                                    } else { //Not a bonus item
-                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], [crate_type[2]]);
-
-                                        //Grades or rarity
-                                        if ("Rarity" in value2) {
-                                            if (value2["Rarity"] === 0) {
-                                                IHD_unbox_obj["Cases"]["Total Graded Items"]["Civilian"]++;
-                                                IHD_unbox_obj["Cases"][crate_type[1]]["Graded Items"]["Civilian"]++;
-                                            } else if (value2["Rarity"] === 1) {
-                                                IHD_unbox_obj["Cases"]["Total Graded Items"]["Freelance"]++;
-                                                IHD_unbox_obj["Cases"][crate_type[1]]["Graded Items"]["Freelance"]++;
-                                            } else if (value2["Rarity"] === 2) {
-                                                IHD_unbox_obj["Cases"]["Total Graded Items"]["Mercenary"]++;
-                                                IHD_unbox_obj["Cases"][crate_type[1]]["Graded Items"]["Mercenary"]++;
-                                            } else if (value2["Rarity"] === 3) {
-                                                IHD_unbox_obj["Cases"]["Total Graded Items"]["Commando"]++;
-                                                IHD_unbox_obj["Cases"][crate_type[1]]["Graded Items"]["Commando"]++;
-                                            } else if (value2["Rarity"] === 4) {
-                                                IHD_unbox_obj["Cases"]["Total Graded Items"]["Assassin"]++;
-                                                IHD_unbox_obj["Cases"][crate_type[1]]["Graded Items"]["Assassin"]++;
-                                            } else if (value2["Rarity"] === 5) {
-                                                IHD_unbox_obj["Cases"]["Total Graded Items"]["Elite"]++;
-                                                IHD_unbox_obj["Cases"][crate_type[1]]["Graded Items"]["Elite"]++;
-                                            } else {
-                                                console.warn("Wear value not matched to anything: " + value2["Wear"]);
-                                            }
-                                        }
-
-                                        //Wears totals
-                                        if ("Wear" in value2) {
-                                            if (value2["Wear"] === 0) {
-                                                IHD_unbox_obj["Cases"]["Total Item Wears"]["Factory New"]++;
-                                                IHD_unbox_obj["Cases"][crate_type[1]]["Item Wears"]["Factory New"]++;
-                                            } else if (value2["Wear"] === 1) {
-                                                IHD_unbox_obj["Cases"]["Total Item Wears"]["Minimal Wear"]++;
-                                                IHD_unbox_obj["Cases"][crate_type[1]]["Item Wears"]["Minimal Wear"]++;
-                                            } else if (value2["Wear"] === 2) {
-                                                IHD_unbox_obj["Cases"]["Total Item Wears"]["Field-Tested"]++;
-                                                IHD_unbox_obj["Cases"][crate_type[1]]["Item Wears"]["Field-Tested"]++;
-                                            } else if (value2["Wear"] === 3) {
-                                                IHD_unbox_obj["Cases"]["Total Item Wears"]["Well-Worn"]++;
-                                                IHD_unbox_obj["Cases"][crate_type[1]]["Item Wears"]["Well-Worn"]++;
-                                            } else if (value2["Wear"] === 4) {
-                                                IHD_unbox_obj["Cases"]["Total Item Wears"]["Battle Scarred"]++;
-                                                IHD_unbox_obj["Cases"][crate_type[1]]["Item Wears"]["Battle Scarred"]++;
-                                            } else {
-                                                console.warn("Wear value not matched to anything: " + value2["Wear"]);
-                                            }
-                                        }
-                                        bonus = false;
+                            }
+                        } else { //crate or stocking
+                            if (crate_type[0] === "stocking") {
+                                if (!(crate_type[1] in IHD_unbox_obj["Stockings"])) {
+                                    IHD_unbox_obj["Stockings"][crate_type[1]] = {};
+                                    drystreakCounter--; //These don't count for drystreaks cause no unusuals :p
+                                }
+                            } else {
+                                if (!(crate_type[1] in IHD_unbox_obj["Crates"])) {
+                                    IHD_unbox_obj["Crates"][crate_type[1]] = {};
+                                }
+                            }
+                        }
+                        //Add items; incriment counters
+                        if (IHD_items_gained_attr in value) {
+                            for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
+                                if ("name" in value2) {
+                                    var name = IHD_inverted_dictionary[value2["name"]];
+                                    if ("Effect" in value2) {
+                                        name = "★ " + value2["Effect"] + " ★ " + name;
                                     }
-                                } else {
-                                    IHD_stats_add_item_to_obj(IHD_unbox_obj, name, ((crate_type[0] === "stocking") ? "Stockings" : "Crates"), crate_type[1]);
-                                }
-                                //Increment qualities
-                                if ("Quality" in value2) {
-                                    var quality = value2["Quality"];
+                                    var bonus = true;
+                                    //Add the names
                                     if (crate_type.length > 2) {
-                                        if (quality === "6" && !bonus) {
-                                            IHD_unbox_obj["Cases"]["Total Uniques"]++;
-                                            IHD_unbox_obj["Cases"][crate_type[1]]["Uniques"]++;
-                                        } else if (quality === "15") {
-                                            IHD_unbox_obj["Cases"]["Total Decorated Skins"]++;
-                                            IHD_unbox_obj["Cases"][crate_type[1]]["Decorated Skins"]++;
-                                        } else if (quality === "11") {
-                                            IHD_unbox_obj["Cases"]["Total Stranges"]++;
-                                            IHD_unbox_obj["Cases"][crate_type[1]]["Stranges"]++;
-                                        } else if (quality === "5" && !name.includes("Unusualifier")) { //Unusualifiers ARE NOT unusuals
-                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", "Total Unusuals");
-                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], "Unusuals");
-                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "All Unusuals");
+                                        //Bonus items 
+                                        if (IHD_paint_list.includes(name)) { //Paint
+                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", "Total Bonus Items", "Paint");
+                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], "Bonus Items", "Paint");
+                                        } else if (IHD_tool_list.includes(name)) { //Tools
+                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", "Total Bonus Items", "Tools");
+                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], "Bonus Items", "Tools");
+                                        } else if (name.includes("Strange Part: ")) { //Strange parts
+                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", "Total Bonus Items", "Strange Parts");
+                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], "Bonus Items", "Strange Parts");
+                                        } else if (name.includes("Unusualifier")) { //Unusualifiers
+                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", "Total Bonus Items", "Unusualifiers");
+                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], "Bonus Items", "Unusualifiers");
+                                        } else if (IHD_Halloween_Bonus.includes(name) || IHD_Halloween_Bonus.includes(name.replace("The ", ""))) { //Bonus Halloween Cosmetics
+                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", "Total Bonus Items", "Halloween Bonus");
+                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], "Bonus Items", "Halloween Bonus");
+                                        } else if (name === "Tour of Duty Ticket" || name === "Strange Count Transfer Tool") { //ToD and stat transfer
+                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", "Total Bonus Items");
+                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], "Bonus Items");
+                                        } else { //Not a bonus item
+                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], [crate_type[2]]);
+
+                                            //Grades or rarity
+                                            if ("Rarity" in value2) {
+                                                if (value2["Rarity"] === 0) {
+                                                    IHD_unbox_obj["Cases"]["Total Graded Items"]["Civilian"]++;
+                                                    IHD_unbox_obj["Cases"][crate_type[1]]["Graded Items"]["Civilian"]++;
+                                                } else if (value2["Rarity"] === 1) {
+                                                    IHD_unbox_obj["Cases"]["Total Graded Items"]["Freelance"]++;
+                                                    IHD_unbox_obj["Cases"][crate_type[1]]["Graded Items"]["Freelance"]++;
+                                                } else if (value2["Rarity"] === 2) {
+                                                    IHD_unbox_obj["Cases"]["Total Graded Items"]["Mercenary"]++;
+                                                    IHD_unbox_obj["Cases"][crate_type[1]]["Graded Items"]["Mercenary"]++;
+                                                } else if (value2["Rarity"] === 3) {
+                                                    IHD_unbox_obj["Cases"]["Total Graded Items"]["Commando"]++;
+                                                    IHD_unbox_obj["Cases"][crate_type[1]]["Graded Items"]["Commando"]++;
+                                                } else if (value2["Rarity"] === 4) {
+                                                    IHD_unbox_obj["Cases"]["Total Graded Items"]["Assassin"]++;
+                                                    IHD_unbox_obj["Cases"][crate_type[1]]["Graded Items"]["Assassin"]++;
+                                                } else if (value2["Rarity"] === 5) {
+                                                    IHD_unbox_obj["Cases"]["Total Graded Items"]["Elite"]++;
+                                                    IHD_unbox_obj["Cases"][crate_type[1]]["Graded Items"]["Elite"]++;
+                                                } else {
+                                                    console.warn("Wear value not matched to anything: " + value2["Wear"]);
+                                                }
+                                            }
+
+                                            //Wears totals
+                                            if ("Wear" in value2) {
+                                                if (value2["Wear"] === 0) {
+                                                    IHD_unbox_obj["Cases"]["Total Item Wears"]["Factory New"]++;
+                                                    IHD_unbox_obj["Cases"][crate_type[1]]["Item Wears"]["Factory New"]++;
+                                                } else if (value2["Wear"] === 1) {
+                                                    IHD_unbox_obj["Cases"]["Total Item Wears"]["Minimal Wear"]++;
+                                                    IHD_unbox_obj["Cases"][crate_type[1]]["Item Wears"]["Minimal Wear"]++;
+                                                } else if (value2["Wear"] === 2) {
+                                                    IHD_unbox_obj["Cases"]["Total Item Wears"]["Field-Tested"]++;
+                                                    IHD_unbox_obj["Cases"][crate_type[1]]["Item Wears"]["Field-Tested"]++;
+                                                } else if (value2["Wear"] === 3) {
+                                                    IHD_unbox_obj["Cases"]["Total Item Wears"]["Well-Worn"]++;
+                                                    IHD_unbox_obj["Cases"][crate_type[1]]["Item Wears"]["Well-Worn"]++;
+                                                } else if (value2["Wear"] === 4) {
+                                                    IHD_unbox_obj["Cases"]["Total Item Wears"]["Battle Scarred"]++;
+                                                    IHD_unbox_obj["Cases"][crate_type[1]]["Item Wears"]["Battle Scarred"]++;
+                                                } else {
+                                                    console.warn("Wear value not matched to anything: " + value2["Wear"]);
+                                                }
+                                            }
+                                            bonus = false;
                                         }
-                                    } else if (crate_type[0] === "crate") { //Don't think stockings gave unusuals but just in case
-                                        if (quality === "5" && !name.includes("Unusualifier")) { //Unusualifiers ARE NOT unusuals
-                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Crates", "Total Unusuals");
-                                            IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "All Unusuals");
+                                    } else {
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, ((crate_type[0] === "stocking") ? "Stockings" : "Crates"), crate_type[1]);
+                                    }
+                                    //Increment qualities
+                                    if ("Quality" in value2) {
+                                        var quality = value2["Quality"];
+                                        if (crate_type.length > 2) {
+                                            if (quality === "6" && !bonus) {
+                                                IHD_unbox_obj["Cases"]["Total Uniques"]++;
+                                                IHD_unbox_obj["Cases"][crate_type[1]]["Uniques"]++;
+                                            } else if (quality === "15") {
+                                                IHD_unbox_obj["Cases"]["Total Decorated Skins"]++;
+                                                IHD_unbox_obj["Cases"][crate_type[1]]["Decorated Skins"]++;
+                                            } else if (quality === "11") {
+                                                IHD_unbox_obj["Cases"]["Total Stranges"]++;
+                                                IHD_unbox_obj["Cases"][crate_type[1]]["Stranges"]++;
+                                            } else if (quality === "5" && !name.includes("Unusualifier")) { //Unusualifiers ARE NOT unusuals
+                                                IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", "Total Unusuals");
+                                                IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], "Unusuals");
+                                                IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "All Unusuals");
+                                                IHD_stats_add_item_to_obj(IHD_unbox_obj, drystreakCounter, "Drystreaks");
+                                                drystreakCounter = 0;
+                                            }
+                                        } else if (crate_type[0] === "crate") { //Don't think stockings gave unusuals but just in case
+                                            if (quality === "5" && !name.includes("Unusualifier")) { //Unusualifiers ARE NOT unusuals
+                                                IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Crates", "Total Unusuals");
+                                                IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "All Unusuals");
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
-                    }
-                } else {
-                    if (IHD_items_gained_attr in value) {
-                        IHD_unbox_obj["Errors"][i] = {};
-                        IHD_unbox_obj["Errors"][i][IHD_items_lost_attr] = value[IHD_items_lost_attr];
-                        IHD_unbox_obj["Errors"][i][IHD_items_gained_attr] = value[IHD_items_gained_attr];
-                        i++;
+                        drystreakCounter++;
+                    } else {
+                        if (IHD_items_gained_attr in value) {
+                            IHD_unbox_obj["Errors"][errorCounter] = {};
+                            IHD_unbox_obj["Errors"][errorCounter][IHD_items_lost_attr] = value[IHD_items_lost_attr];
+                            IHD_unbox_obj["Errors"][errorCounter][IHD_items_gained_attr] = value[IHD_items_gained_attr];
+                            i++;
+                        }
                     }
                 }
             }
         }
     }
-
+    IHD_unbox_obj["Drystreaks"]["Current Drystreak"] = drystreakCounter;
     document.getElementById("IHD_stats_div").innerHTML += "<br><div class=\"mvm\"><h2>Unboxes</h2></div>" + IHD_stats_obj_to_html(IHD_unbox_obj)[0] + "<br>";
 
 }
@@ -1939,7 +1959,8 @@ var IHD_ignore_key_totals = {
     "Total Missions": 1,
     "Mission Loot Amount Distribution": 1,
     "Tour Loot Amount Distribution": 1,
-    "Dry Streaks": 1
+    "Dry Streaks": 1,
+    "Current Drystreak": 1
 }
 function IHD_stats_obj_to_html(obj) {
     var html = "";
@@ -1986,9 +2007,9 @@ function IHD_enableButton() {
     IHD_stats_button.disabled = false;
     IHD_stop_button.disabled = true;
     IHD_ready_to_load = true;
-    IHD_json_object.dictionary = IHD_inverted_dictionary;
-    IHD_json_object.type_dictionary = IHD_inverted_type_dictionary;
-    IHD_json_object.other_dictionary = IHD_inverted_other_dictionary;
+    IHD_json_object["dictionary"] = IHD_inverted_dictionary;
+    IHD_json_object["type_dictionary"] = IHD_inverted_type_dictionary;
+    IHD_json_object["other_dictionary"] = IHD_inverted_other_dictionary;
     IHD_json_object[IHD_start_cursor_attr] = IHD_start_cursor;
     if (IHD_prev_cursor) {
         IHD_json_object[IHD_end_cursor_attr] = IHD_prev_cursor;
@@ -1996,7 +2017,7 @@ function IHD_enableButton() {
         IHD_json_object[IHD_end_cursor_attr] = 0;
     }
     //Note: potentially conflicting time zones if someone continues a file started in a different timezone
-    //But it is not worth the effort to verify this I think.
+    //But it is not worth the effort to verify this, I think.
     IHD_json_object[IHD_time_zone_attr] = Intl.DateTimeFormat().resolvedOptions().timeZone;
     IHD_download(JSON.stringify(IHD_json_object), 'inventory_history.json', 'application/json');
 }
@@ -2172,7 +2193,7 @@ function IHD_saveLastEventUsed(lastEvent) {
         && IHD_crate_items_used.includes(IHD_inverted_dictionary[IHD_used_temp_obj[IHD_items_lost_attr][0].name])) {
         IHD_used_temp_obj.event = 8;
     }
-    IHD_json_object[IHD_obj_counter] = IHD_used_temp_obj;
+    IHD_json_object[IHD_events_attr][IHD_obj_counter] = IHD_used_temp_obj;
     IHD_obj_counter++;
     IHD_last_event_used = lastEvent;
     IHD_used_temp_obj = {};
@@ -2268,7 +2289,7 @@ function IHD_tradeHistoryRowToJson() {
             }
         }
     } else { //Normal event
-        IHD_json_object[IHD_obj_counter] = IHD_inventory_event;
+        IHD_json_object[IHD_events_attr][IHD_obj_counter] = IHD_inventory_event;
         IHD_obj_counter++;
     }
 }
