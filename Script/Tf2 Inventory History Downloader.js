@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.8
+// @version      0.8.1
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -181,7 +181,8 @@ const IHD_inventory_modifications_list = [
     "Applied a Strange Filter",
     "Card Upgrade Removed",
     "Card Upgraded", //60
-    "Name changed"
+    "Name changed",
+    "Festivizer removed"
 ];
 
 //These are events that create items and thus would have original item ids
@@ -736,7 +737,11 @@ function IHD_global_stats_report() {
     for (var i = 0; i <= IHD_inventory_modifications_list.length; i++) {
         var eventType = "" + i;
         if (eventType in IHD_events_type_sorted) {
-            IHD_global_stats_obj["Event Breakdown"][IHD_inventory_modifications_list[eventType]] = Object.keys(IHD_events_type_sorted[eventType]).length;
+            var amt = Object.keys(IHD_events_type_sorted[eventType]).length
+            IHD_global_stats_obj["Event Breakdown"][IHD_inventory_modifications_list[eventType]] = amt;
+            if (IHD_creation_events.includes(IHD_inventory_modifications_list[eventType])) {
+                IHD_global_stats_obj["Total Items Created"] += amt;
+            }
         }
     }
 

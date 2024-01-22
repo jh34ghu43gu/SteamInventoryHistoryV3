@@ -11,6 +11,10 @@
  Note: I personally experienced a 429 error after about 1200 requests in ~3 hours. Open the dev console with F12 and click on the console tab to see the reason why a download stopped. If you also recieved a 429 you should make sure to save the cursor it stopped at, and if possible leave the page open so you can recieve every event in one file. I do not know what the time frame is for these rate limits, the first time it happened I was able to load again after ~6 hours, the second time I was still getting 429s even after 7 hours 54 minutes. Try refreshing the page in a new tab and if you can load it then you can resume the download.
 # Versions
 
+ ## 0.8.1
+ * Added missing 'Festivizer removed' event which was causing issue #22
+ * Global stats counts total items created (events that create original ids)
+
  ## 0.8 (NOT BACKWARDS COMPATABILE WITH PRIOR DOWNLOADS - although you can easily fix this by surrounding the events with "Events" { ... })
  * Events use their own object instead of the main object
  * Loading files now puts the ending cursor of the last file in the input box to automatically start the download where it was left off
