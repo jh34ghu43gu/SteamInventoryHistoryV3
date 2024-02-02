@@ -1,14 +1,30 @@
 # SteamInventoryHistoryV3
  Attempt #3, now for use by everyone
 
-# How to use
- 1) Install [tampermonkey](https://www.tampermonkey.net/) for your web browser, greasemonkey may also work but I have only tested for tampermonkey on firefox.
- 2) Create a new userscript and copy the contents of "Tf2 Inventory History Downloader" from the script folder into the new userscript
- 3) Go to https://steamcommunity.com/my/inventoryhistory?app%5B0%5D=440&l=english and click the Download as json button.
-   Note: If you need to stop, or the script stops itself, make sure to save the cursor that appears in the text input, this will allow you to continue the download from where you left off.
- 4) Do something with your json (stat analysis feature coming eventually).
- 
- Note: I personally experienced a 429 error after about 1200 requests in ~3 hours. Open the dev console with F12 and click on the console tab to see the reason why a download stopped. If you also recieved a 429 you should make sure to save the cursor it stopped at, and if possible leave the page open so you can recieve every event in one file. I do not know what the time frame is for these rate limits, the first time it happened I was able to load again after ~6 hours, the second time I was still getting 429s even after 7 hours 54 minutes. Try refreshing the page in a new tab and if you can load it then you can resume the download.
+# How to use (first time)
+ Note: In these instructions, unless otherwise specified, "upload" refers to the button by the label "Load in previous progress:" and allows the script to load previous json(s); you are not actually uploading the file to any remote computer or server.
+ 1) Install [tampermonkey](https://www.tampermonkey.net/) for your web browser, greasemonkey may also work but I have only tested for tampermonkey on (a) firefox (branch).
+ 2) [Install the script](https://github.com/jh34ghu43gu/SteamInventoryHistoryV3/raw/main/Script/Tf2%20Inventory%20History%20Downloader.user.js) by opening the raw .user.js file in the script folder (or click the link).
+ 3) Go to your Steam [inventory history](https://steamcommunity.com/my/inventoryhistory?app%5B0%5D=440&l=english)
+ 4) Select the options for your situation. By default your trades and SCM events will not be saved, if you are downloading this for personal reasons you may want to unselect this. If you are submitting this to me for data analysis and are concerned about anonymity, you may want to select "Only MvM events" or "Only Unbox events" or both. Although I will not share any specific data given to me, these 2 options are the hardest to have linked back to your account (although it would not be impossible; for example: 1 of 1 unusuals may be found via backpack.tf). If you are submitting this to me and are less concerned about anonymity, please check the "Save item ids" option as this will allow me to fabricate an item id timeline similar to what [tf2tools](https://web.archive.org/web/20180515034133/http://www.tf2tools.net/articles/itemids) used to have. If you are downloading for personal reasons you will find item ids helpful in locating your old items on backpack.tf or other sites that track ids; selecting "Only original ids" will cut down on the file size and will only include ids for items that you created (from unboxing, tours, item drops, etc..).
+ 5) Click the "Download as json" button. Download times and size will vary based on how much inventory interaction you have. Extremely active accounts will receive an error 429 (Too many requests) before the full history can be downloaded; from my tests this happens after about 1.5-2 hours. If you are rate limited, save the file from the prompt and wait a day before continuing. You can continue by re-opening the page and uploading or by leaving the tab open and clicking "Download as json" again. If you continue via uploading make sure to reselect your options! None of my tests have gone above 1GB of memory usage (that I have observed), but still very hefty amounts above 600MB. Try not to starve the tab of resources or you may skip dates, the easiest way to avoid this is to leave the tab active and go touch grass :)
+ 6) When the download is finished you will be prompted to save the json file. If you accidentally do not save it, hit "Download as json" again and hit "Stop download" right after and it should prompt you again.
+ 7) Open your browser's console (F12) and check the log to verify that the download ended because it ran out of events and not an Error 429. If the download ended from Error 429 see step 5. If it ended for some other reason or you see an error, please report it in the issues tab and I will try my best to fix it.
+ 8) Click "Generate Statistics Report" to scroll through the various stats.
+
+### How to use (returning)
+ * If you want to view your stats again
+   *  Upload the json you downloaded and click the "Generate Statistics Report" button when it appears.
+ * If you want to continue a download you ended early
+   * Upload the json you downloaded, set the options again, and click "Download as json". The json you downloaded before has stored what time you left off at and will automatically resume from that point.
+ * If you want to download newer events
+   * DO NOT upload the previous json.
+   * Start a new download (make sure to set your options!).
+   * Monitor the events as they appear and stop the download once you see repeat dates. Save the new json as a different file name.
+   * Reload the page.
+   * Upload both json files (use ctrl to select multiple files, you must select them both at the same time). Select the larger file first to save some processing time.
+   * Click "Download as json" and immediately click "Stop download". Save the new json which has both files combined. Feel free to delete the old files (although I would recommend keeping them in case there was a bug as this combining feature is not well tested).
+   
 # Versions
 
  ## 0.8.2
