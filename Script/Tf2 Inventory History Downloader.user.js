@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.8.1
+// @version      0.8.2
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -729,7 +729,7 @@ function IHD_stats_add_item_to_obj(obj, name, child, child2, child3, child4) {
 function IHD_global_stats_report() {
     var IHD_global_stats_obj = {
         "Total events": IHD_obj_counter,
-        "Total Items": IHD_dict_counter - 1,
+        "Total Unique Items": IHD_dict_counter - 1,
         "Total Items Created": 0,
         "Event Breakdown": {} //Keep this one last
     }
@@ -737,10 +737,15 @@ function IHD_global_stats_report() {
     for (var i = 0; i <= IHD_inventory_modifications_list.length; i++) {
         var eventType = "" + i;
         if (eventType in IHD_events_type_sorted) {
-            var amt = Object.keys(IHD_events_type_sorted[eventType]).length
-            IHD_global_stats_obj["Event Breakdown"][IHD_inventory_modifications_list[eventType]] = amt;
+            IHD_global_stats_obj["Event Breakdown"][IHD_inventory_modifications_list[eventType]] = Object.keys(IHD_events_type_sorted[eventType]).length;
             if (IHD_creation_events.includes(IHD_inventory_modifications_list[eventType])) {
-                IHD_global_stats_obj["Total Items Created"] += amt;
+                for (const [key, value] of Object.entries(IHD_events_type_sorted[eventType])) {
+                    if (IHD_items_gained_attr in value) {
+                        IHD_global_stats_obj["Total Items Created"] += Object.keys(value[IHD_items_gained_attr]).length;
+                    } else if (IHD_debug_statements && eventType !== "22") { //22 Is contracts which sometimes only remove loaner items
+                        console.warn("Creation event didn't have items gained!" + JSON.stringify(value));
+                    }
+                }
             }
         }
     }

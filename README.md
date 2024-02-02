@@ -2,7 +2,7 @@
  Attempt #3, now for use by everyone
 
 # How to use
- 1) Install tampermonkey for your web browser, greasemonkey may also work but I have only tested for tampermonkey on firefox.
+ 1) Install [tampermonkey](https://www.tampermonkey.net/) for your web browser, greasemonkey may also work but I have only tested for tampermonkey on firefox.
  2) Create a new userscript and copy the contents of "Tf2 Inventory History Downloader" from the script folder into the new userscript
  3) Go to https://steamcommunity.com/my/inventoryhistory?app%5B0%5D=440&l=english and click the Download as json button.
    Note: If you need to stop, or the script stops itself, make sure to save the cursor that appears in the text input, this will allow you to continue the download from where you left off.
@@ -10,6 +10,10 @@
  
  Note: I personally experienced a 429 error after about 1200 requests in ~3 hours. Open the dev console with F12 and click on the console tab to see the reason why a download stopped. If you also recieved a 429 you should make sure to save the cursor it stopped at, and if possible leave the page open so you can recieve every event in one file. I do not know what the time frame is for these rate limits, the first time it happened I was able to load again after ~6 hours, the second time I was still getting 429s even after 7 hours 54 minutes. Try refreshing the page in a new tab and if you can load it then you can resume the download.
 # Versions
+
+ ## 0.8.2
+ * Global items created actually counts items not just events (#23)
+ * Update file extension
 
  ## 0.8.1
  * Added missing 'Festivizer removed' event which was causing issue #22
