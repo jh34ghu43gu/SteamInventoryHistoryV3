@@ -27,11 +27,28 @@
    
 # Versions
 
+ ## 0.9 (NOT BACKWARDS COMPATABILE WITH PRIOR DOWNLOADS)
+ * File size improvements (#27)
+   * Major keys are assigned abbreviations for the download
+   * Quality and levels are properly parsed and stored as numbers now instead of strings
+ * Events are now stored in day blocks instead of single list (#32)
+   * Day blocks use unix timestamps based on the user's timezone
+   * Rewrite to most of the multiple-file loading logic, should result in much faster load times
+     * Fixed a bug in file combining where events would always return non-dupe if they had the same event type+time (undocumented)
+     * Fixed a bug in file combining where items that didn't have a type attribute would recieve an undefined one, also leading to always returning non-dupe status (undocumented)
+     * Dupe checking appears to be working (#8)
+ * Warning for error mvm missions now includes what tour
+ * Some additional debug statements for combining files
+ * Additional check for missing item errors to hopefully prevent a crash
+   * Fixed the warning message to actually display the cursor data
+ * Fixed a typo with the General Stats header
+ * Added MvM robot part distribution stats 
+
  ## 0.8.2
  * Global items created actually counts items not just events (#23)
  * Update file extension
 
- ## 0.8.1
+ ### 0.8.1
  * Added missing 'Festivizer removed' event which was causing issue #22
  * Global stats counts total items created (events that create original ids)
 

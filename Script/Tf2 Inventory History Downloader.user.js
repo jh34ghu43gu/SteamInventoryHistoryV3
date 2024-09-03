@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.8.2
+// @version      0.9
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -18,10 +18,15 @@
 console.log("Tf2 Inventory History Downloader Script is active.");
 //Attribute names
 var IHD_events_attr = "Events"
-var IHD_items_gained_attr = "Gained";
-var IHD_items_lost_attr = "Lost";
-var IHD_items_hold_attr = "items_on_hold";
-var IHD_items_type_attr = "Type";
+var IHD_event_attr = "E";
+var IHD_time_attr = "t";
+var IHD_items_gained_attr = "G";
+var IHD_items_lost_attr = "L";
+var IHD_items_hold_attr = "H";
+var IHD_items_type_attr = "T";
+var IHD_name_attr = "N";
+var IHD_level_attr = "L";
+var IHD_quality_attr = "Q";
 var IHD_start_cursor_attr = "starting_cursor";
 var IHD_end_cursor_attr = "ending_cursor";
 var IHD_time_zone_attr = "LocalTimeZone";
@@ -37,7 +42,6 @@ var IHD_inverted_type_dictionary = {};
 var IHD_other_dictionary = {};
 var IHD_inverted_other_dictionary = {};
 var IHD_loop;
-var IHD_obj_counter = 0;
 var IHD_dict_counter = 1; //Logic errors when reading if we start at 0 (inverse dictionary can't write a 0 key?)
 var IHD_type_dict_counter = 1;
 var IHD_other_dict_counter = 1;
@@ -435,10 +439,12 @@ function IHD_addButtons(jNode) {
 
 //File reading section
 function IHD_read_File(file) {
+    IHD_debug_statements ? console.log("Starting parse of file: " + file.name) : false;
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.readAsText(file);
         reader.onload = () => {
+            IHD_debug_statements ? console.log("Ending parse of file: " + file.name) : false;
             resolve(reader.result);
         }
         reader.onerror = () => reject(reader.error);
@@ -448,25 +454,29 @@ function IHD_read_File(file) {
 async function IHD_read_files() {
     var jsonObjects = [];
     for (var file of IHD_file_list) {
+        IHD_debug_statements ? console.log("Starting read of file: " + file.name) : false;
         var fileContent = await IHD_read_File(file);
         var jsonObject = JSON.parse(fileContent);
         jsonObjects.push(jsonObject);
+        IHD_debug_statements ? console.log("Ending read of file: " + file.name) : false;
     }
     return jsonObjects;
 }
 
 function IHD_read_file_objects(objects) {
+    IHD_debug_statements ? console.log("Reading all objects in files") : false;
     var IHD_duplicate_times = {};
     for (var i = 0; i < Array.from(objects).length; i++) {
+        IHD_debug_statements ? console.log("Dict counter = " + IHD_dict_counter) : false;
         var IHD_file_json_obj = Array.from(objects)[i];
         //First file is very simple; just copying everything and making sure to incriment our values accordingly
-        if (Object.keys(IHD_dict_counter).length === 0 && Object.keys(IHD_obj_counter).length === 0) {
+        if (IHD_dict_counter === 1) {
+            IHD_debug_statements ? console.log("First file's objects detected.") : false;
             IHD_json_object = IHD_file_json_obj;
-            IHD_obj_counter = Object.keys(IHD_json_object[IHD_events_attr]).length;
-            IHD_dictionary = invertDictionary(IHD_file_json_obj.dictionary);
+            IHD_dictionary = invertDictionary(IHD_file_json_obj.name_dictionary);
             IHD_type_dictionary = invertDictionary(IHD_file_json_obj.type_dictionary);
             IHD_other_dictionary = invertDictionary(IHD_file_json_obj.other_dictionary);
-            IHD_dict_counter = Object.keys(IHD_file_json_obj.dictionary).length + 1;
+            IHD_dict_counter = Object.keys(IHD_file_json_obj.name_dictionary).length + 1;
             IHD_type_dict_counter = Object.keys(IHD_file_json_obj.type_dictionary).length + 1;
             IHD_other_dict_counter = Object.keys(IHD_file_json_obj.other_dictionary).length + 1;
             if (IHD_start_cursor_attr in IHD_file_json_obj) {
@@ -475,36 +485,25 @@ function IHD_read_file_objects(objects) {
             if (IHD_end_cursor_attr in IHD_file_json_obj) {
                 IHD_prev_cursor = IHD_file_json_obj[IHD_end_cursor_attr];
             }
-            delete IHD_json_object["dictionary"];
-        } else { //2nd+ files need to change our dictionary item values and also our obj counter incriments
-            var IHD_file_dictionary = IHD_file_json_obj.dictionary;
+            delete IHD_json_object["name_dictionary"];
+        } else { //2nd+ files need to change our dictionary item values
+            IHD_debug_statements ? console.log("Additional file objects detected") : false;
+            var IHD_file_dictionary = IHD_file_json_obj.name_dictionary;
             var IHD_file_type_dictionary = IHD_file_json_obj.type_dictionary;
             var IHD_file__other_dictionary = IHD_file_json_obj.other_dictionary;
-            //Check for cursor crossing; take oldest ending cursor and earliest starting cursor
-            var duplicates = false;
-            //TODO this probably has an edge case in it
+            //First, change cursors so the ending cursor uses the oldest value, and starting cursor uses youngest value
             if (IHD_start_cursor_attr in IHD_file_json_obj && IHD_end_cursor_attr in IHD_file_json_obj) {
                 if (IHD_start_cursor && IHD_prev_cursor) {
-                    if (IHD_file_json_obj[IHD_start_cursor_attr].time > IHD_start_cursor.time ||//This file has a starting cursor before our previous files
-                        (IHD_file_json_obj[IHD_start_cursor_attr].time === IHD_start_cursor.time
-                            && IHD_file_json_obj[IHD_start_cursor_attr].time_frac > IHD_start_cursor.time_frac)
-                    ) {
-                        if (IHD_file_json_obj[IHD_end_cursor_attr].time < IHD_start_cursor.time ||
-                            (IHD_file_json_obj[IHD_end_cursor_attr].time === IHD_start_cursor.time
-                                && IHD_file_json_obj[IHD_end_cursor_attr].time_frac < IHD_start_cursor.time_frac)
-                        ) {
-                            //This file's end time is older than the starting from previous files so there is probably duplicate info
-                            duplicates = true;
-                        }
-                        //Starting cursor should be changed to the earlier one
-                        IHD_start_cursor = IHD_file_json_obj[IHD_start_cursor_attr];
-                    } else if (IHD_file_json_obj[IHD_start_cursor_attr].time > IHD_prev_cursor.time) { //TODO here
-                        //This file's start is newer than the previous file's end so there is probably duplicate info
-                        duplicates = true;
+                    if (IHD_file_json_obj[IHD_start_cursor_attr].time > IHD_start_cursor.time          //Start time is younger
+                        || (IHD_file_json_obj[IHD_start_cursor_attr].time === IHD_start_cursor.time    //or start time is the same
+                            && IHD_file_json_obj[IHD_start_cursor_attr].s > IHD_start_cursor.s)) {         //and start seconds is younger
+                        IHD_start_cursor = IHD_file_json_obj[IHD_start_cursor_attr];                   //So use this file's start time instead
                     }
-                    //Prev cursor should be changed to the older one if applicable
-                    if (IHD_file_json_obj[IHD_end_cursor_attr].time < IHD_prev_cursor.time) { //TODO and here
-                        IHD_prev_cursor = IHD_file_json_obj[IHD_end_cursor_attr];
+
+                    if (IHD_file_json_obj[IHD_end_cursor_attr].time < IHD_prev_cursor.time          //End time is older
+                        || (IHD_file_json_obj[IHD_end_cursor_attr].time === IHD_prev_cursor.time    //or end time is the same
+                            && IHD_file_json_obj[IHD_end_cursor_attr].s < IHD_prev_cursor.s)) {     //and end seconds is older
+                        IHD_prev_cursor = IHD_file_json_obj[IHD_end_cursor_attr];                   //So use this file's end time instead
                     }
                 } else {
                     if (!IHD_start_cursor) {//First/previous file(s) didn't set our starting cursor so just take this one
@@ -515,49 +514,66 @@ function IHD_read_file_objects(objects) {
                     }
                 }
             }
-            if (duplicates) {
-                //Setup an object that sorts objects by times for quick checking against duplicates
-                for (var time_count = 0; time_count < Object.keys(IHD_json_object[IHD_events_attr]); time_count++) {
-                    if (!(Object.keys(IHD_json_object[IHD_events_attr])[time_count] === "dictionary")) {
-                        IHD_duplicate_times[IHD_json_object[IHD_events_attr][time_count].time] = time_count;
-                        IHD_duplicate_times[IHD_json_object[IHD_events_attr][time_count].time][time_count] = IHD_json_object[IHD_events_attr][time_count];
-                    }
+
+            //Next go through all the dates
+            for (const [day, events] of Object.entries(IHD_file_json_obj[IHD_events_attr])) {
+                var IHD_new_events = {};
+                //Check if the day is already in the main events obj
+                var duplicateDay = false;
+                if (day in IHD_json_object[IHD_events_attr]) {
+                    duplicateDay = true;
+                } else {
+                    IHD_json_object[IHD_events_attr][day] = {};
                 }
-                IHD_debug_statements ? console.log("Found duplicate time: " + IHD_duplicate_times) : 0;
-            }
-            for (var m = 0; m < Object.keys(IHD_file_json_obj).length; m++) {
-                if (!(Object.keys(IHD_file_json_obj)[m] === "dictionary")) {
-                    IHD_event = IHD_file_json_obj[m];
-                    if (duplicates && IHD_event.time in IHD_duplicate_times) {
-                        var dupe = false;
-                        for (var dCheck in IHD_duplicate_times[IHD_event.time]) {
-                            if (IHD_duplicate_entry_checker(IHD_event, dCheck)) {
-                                dupe = true;
+                //Go through all the events of that day
+                for (const [key, event] of Object.entries(events)) {
+                    //Fix the event's dictionary names so it can be properly compared and/or stored
+                    IHD_new_event = {};
+                    for (const [eventKey, eventValue] of Object.entries(event)) {
+                        if (eventKey === IHD_items_gained_attr) {
+                            IHD_new_event[IHD_items_gained_attr] = IHD_file_items_handler(eventValue, IHD_file_dictionary, IHD_file_type_dictionary, IHD_file__other_dictionary);
+                        } else if (eventKey === IHD_items_lost_attr) {
+                            IHD_new_event[IHD_items_lost_attr] = IHD_file_items_handler(eventValue, IHD_file_dictionary, IHD_file_type_dictionary, IHD_file__other_dictionary);
+                        } else if (eventKey === IHD_items_hold_attr) {
+                            IHD_new_event[IHD_items_hold_attr] = IHD_file_items_handler(eventValue, IHD_file_dictionary, IHD_file_type_dictionary, IHD_file__other_dictionary);
+                        } else {
+                            IHD_new_event[eventKey] = eventValue;
+                        }
+                    }
+
+                    //If the day already exists, check if the event was already recorded
+                    if (duplicateDay) {
+                        //If the day is 100% a dupe then every key should match and we can skip checking against every existing event
+                        if (IHD_duplicate_entry_checker(event, IHD_json_object[IHD_events_attr][day][key], true)) {
+                            continue;
+                        }
+                        //Day is only partially the same so we need to check every event to every other event
+                        //TODO? Using strict = true here as an assumption that no one will be splitting a download
+                        //  at the exact minute SCM events are occuring but is technically a possibility that would
+                        //  happen and events will be lost, probably not worth the time to properly check
+                        var duplicateEvent = false;
+                        for (const [oldEventKey, oldEvent] of Object.entries(IHD_json_object[IHD_events_attr][day])) {
+                            if (IHD_duplicate_entry_checker(event, oldEvent, true)) {
+                                duplicateEvent = true;
                                 break;
                             }
                         }
-                        if (dupe) {
+                        if (duplicateEvent) {
                             continue;
                         }
                     }
-                    IHD_new_event = {};
-                    for (var k = 0; k < Object.keys(IHD_event).length; k++) {
-                        var key = Object.keys(IHD_event)[k];
-                        if (key === IHD_items_gained_attr) {
-                            IHD_new_event[IHD_items_gained_attr] = IHD_file_items_handler(IHD_event[IHD_items_gained_attr], IHD_file_dictionary, IHD_file_type_dictionary, IHD_file__other_dictionary);
-                        } else if (key === IHD_items_lost_attr) {
-                            IHD_new_event[IHD_items_lost_attr] = IHD_file_items_handler(IHD_event[IHD_items_lost_attr], IHD_file_dictionary, IHD_file_type_dictionary, IHD_file__other_dictionary);
-                        } else if (key === IHD_items_hold_attr) {
-                            IHD_new_event[IHD_items_hold_attr] = IHD_file_items_handler(IHD_event[IHD_items_hold_attr], IHD_file_dictionary, IHD_file_type_dictionary, IHD_file__other_dictionary);
-                        } else {
-                            IHD_new_event[key] = IHD_event[key];
-                        }
-                    }
-                    IHD_json_object[IHD_events_attr][IHD_obj_counter] = IHD_new_event;
-                    IHD_obj_counter++;
+
+
+                    //Store the event till we're done with the day
+                    IHD_new_events[Object.keys(IHD_new_events).length] = IHD_new_event;
+                }
+                //Finished checking all the events of the day, now we can add all the non-dupe ones to the main obj
+                for (const [key, event] of Object.entries(IHD_new_events)) {
+                    IHD_saveEvent(event);
                 }
             }
         }
+        IHD_debug_statements ? console.log("Finished reading objects from a file") : false;
     }
     if (IHD_prev_cursor) {
         document.getElementById("IHD_cursor_input").value = IHD_prev_cursor["time"] + " " + IHD_prev_cursor["time_frac"] + " " + IHD_prev_cursor["s"];
@@ -565,6 +581,7 @@ function IHD_read_file_objects(objects) {
     IHD_inverted_dictionary = invertDictionary(IHD_dictionary);
     IHD_inverted_type_dictionary = invertDictionary(IHD_type_dictionary);
     IHD_inverted_other_dictionary = invertDictionary(IHD_other_dictionary);
+    IHD_debug_statements ? console.log("Finished reading all objects in files") : false;
 }
 //Take events item groups (gain/lost/hold) from the 2nd+ files and re-assign proper dictionary values to their items
 function IHD_file_items_handler(items, dictionary, typeDictionary, otherDictionary) {
@@ -572,20 +589,22 @@ function IHD_file_items_handler(items, dictionary, typeDictionary, otherDictiona
     for (var i = 0; i < Object.keys(items).length; i++) {
         var IHD_temp_item = items[i];
         //Name
-        if (IHD_dictionary[dictionary[items[i]["name"]]] >= 0) {
-            IHD_temp_item["name"] = IHD_dictionary[dictionary[items[i]["name"]]];
+        if (IHD_dictionary[dictionary[items[i][IHD_name_attr]]] >= 0) {
+            IHD_temp_item[IHD_name_attr] = IHD_dictionary[dictionary[items[i][IHD_name_attr]]];
         } else {
-            IHD_dictionary[dictionary[items[i]["name"]]] = IHD_dict_counter;
-            IHD_temp_item["name"] = IHD_dict_counter;
+            IHD_dictionary[dictionary[items[i][IHD_name_attr]]] = IHD_dict_counter;
+            IHD_temp_item[IHD_name_attr] = IHD_dict_counter;
             IHD_dict_counter++;
         }
         //Type
-        if (IHD_type_dictionary[typeDictionary[items[i][IHD_items_type_attr]]] >= 0) {
-            IHD_temp_item[IHD_items_type_attr] = IHD_type_dictionary[typeDictionary[items[i][IHD_items_type_attr]]];
-        } else {
-            IHD_type_dictionary[typeDictionary[items[i][IHD_items_type_attr]]] = IHD_type_dict_counter;
-            IHD_temp_item[IHD_items_type_attr] = IHD_type_dict_counter;
-            IHD_type_dict_counter++;
+        if (IHD_items_type_attr in IHD_temp_item) {
+            if (IHD_type_dictionary[typeDictionary[items[i][IHD_items_type_attr]]] >= 0) {
+                IHD_temp_item[IHD_items_type_attr] = IHD_type_dictionary[typeDictionary[items[i][IHD_items_type_attr]]];
+            } else {
+                IHD_type_dictionary[typeDictionary[items[i][IHD_items_type_attr]]] = IHD_type_dict_counter;
+                IHD_temp_item[IHD_items_type_attr] = IHD_type_dict_counter;
+                IHD_type_dict_counter++;
+            }
         }
         IHD_temp_items[i] = IHD_temp_item;
     }
@@ -596,12 +615,14 @@ function IHD_file_items_handler(items, dictionary, typeDictionary, otherDictiona
 //SCM events cannot be distinguished from each other if they happen in the same minute and should always be treated as non-dupes
 //(And presumibly, because we know ahead of time that the 'time' attribute is the most likely to be different,
 //  we probably will save a bit of time over that method)
-function IHD_duplicate_entry_checker(entry1, entry2) {
-    if (entry1.time === entry2.time) {
-        if (entry1.event === entry2.event) {
+//If strict is true we ignore the SCM assumption that events occuring in the same minute are different in case
+//  we think a day obj block is 100% identical
+function IHD_duplicate_entry_checker(entry1, entry2, strict) {
+    if (entry1[IHD_time_attr] === entry2[IHD_time_attr]) {
+        if (entry1[IHD_event_attr] === entry2[IHD_event_attr]) {
             //SCM events that happen at the same time are practically indistinguishable from each other if they have the same item 
             //so just skip that check and assume they are different (0-4 are SCM events)
-            if (entry1.event > 4) {
+            if (entry1[IHD_event_attr] > 4 || strict) {
                 return _.isEqual(entry1, entry2);
             }
         }
@@ -653,12 +674,16 @@ function IHD_stats_report() {
     IHD_inverted_type_dictionary = invertDictionary(IHD_type_dictionary);
     IHD_inverted_other_dictionary = invertDictionary(IHD_other_dictionary);
     //Go through IHD_json_object and sort events by type into their own objects
-    for (const [key, value] of Object.entries(IHD_json_object[IHD_events_attr])) {
-        if ("event" in value) {
-            if (!(value["event"] in IHD_events_type_sorted)) {
-                IHD_events_type_sorted[value["event"]] = {};
+    //This should be going through the days from youngest to oldest so events will be automatically sorted as such
+    for (const [day, events] of Object.entries(IHD_json_object[IHD_events_attr])) {
+        for (const [key, value] of Object.entries(events)) {
+            if ("event" in value) {
+                if (!(value["event"] in IHD_events_type_sorted)) {
+                    IHD_events_type_sorted[value["event"]] = {};
+                }
+                var size = Object.keys(IHD_events_type_sorted[value["event"]]).length;
+                IHD_events_type_sorted[value["event"]][size] = value;
             }
-            IHD_events_type_sorted[value["event"]][key] = value;
         }
     }
     IHD_global_stats_report();
@@ -727,9 +752,11 @@ function IHD_stats_add_item_to_obj(obj, name, child, child2, child3, child4) {
 }
 
 function IHD_global_stats_report() {
+    var IHD_total_events = 0;
+    var tempAmt = 0;
     var IHD_global_stats_obj = {
-        "Total events": IHD_obj_counter,
-        "Total Unique Items": IHD_dict_counter - 1,
+        "Total events": 0,
+        "Total Unique Item Names": IHD_dict_counter - 1,
         "Total Items Created": 0,
         "Event Breakdown": {} //Keep this one last
     }
@@ -737,13 +764,15 @@ function IHD_global_stats_report() {
     for (var i = 0; i <= IHD_inventory_modifications_list.length; i++) {
         var eventType = "" + i;
         if (eventType in IHD_events_type_sorted) {
-            IHD_global_stats_obj["Event Breakdown"][IHD_inventory_modifications_list[eventType]] = Object.keys(IHD_events_type_sorted[eventType]).length;
+            tempAmt = Object.keys(IHD_events_type_sorted[eventType]).length;
+            IHD_global_stats_obj["Event Breakdown"][IHD_inventory_modifications_list[eventType]] = tempAmt;
+            IHD_total_events += tempAmt;
             if (IHD_creation_events.includes(IHD_inventory_modifications_list[eventType])) {
                 for (const [key, value] of Object.entries(IHD_events_type_sorted[eventType])) {
                     if (IHD_items_gained_attr in value) {
                         IHD_global_stats_obj["Total Items Created"] += Object.keys(value[IHD_items_gained_attr]).length;
                     } else if (IHD_debug_statements && eventType !== "22") { //22 Is contracts which sometimes only remove loaner items
-                        console.warn("Creation event didn't have items gained!" + JSON.stringify(value));
+                        console.log("Creation event didn't have items gained!" + JSON.stringify(value));
                     }
                 }
             }
@@ -754,15 +783,18 @@ function IHD_global_stats_report() {
     for (i = 0; i <= IHD_inventory_modifications_list_special_names.length; i++) {
         eventType = "" + (IHD_special_event_modifier + i);
         if (eventType in IHD_events_type_sorted) {
+            tempAmt = Object.keys(IHD_events_type_sorted[eventType]).length;
+            IHD_total_events += tempAmt;
             if (IHD_inventory_modifications_list_special_names["" + i] in IHD_global_stats_obj["Event Breakdown"]) { //Traded is used twice bc ofc
-                IHD_global_stats_obj["Event Breakdown"][IHD_inventory_modifications_list_special_names["" + i]] += Object.keys(IHD_events_type_sorted[eventType]).length;
+                IHD_global_stats_obj["Event Breakdown"][IHD_inventory_modifications_list_special_names["" + i]] += tempAmt;
             } else {
-                IHD_global_stats_obj["Event Breakdown"][IHD_inventory_modifications_list_special_names["" + i]] = Object.keys(IHD_events_type_sorted[eventType]).length;
+                IHD_global_stats_obj["Event Breakdown"][IHD_inventory_modifications_list_special_names["" + i]] = tempAmt;
             }
         }
     }
+    IHD_global_stats_obj["Total events"] = IHD_total_events;
 
-    document.getElementById("IHD_stats_div").innerHTML += "<br><div class=\"mvm\"><h2>MvM Loot</h2></div>" + IHD_stats_obj_to_html(IHD_global_stats_obj)[0] + "<br>";
+    document.getElementById("IHD_stats_div").innerHTML += "<br><div class=\"mvm\"><h2>General Overall Stats</h2></div>" + IHD_stats_obj_to_html(IHD_global_stats_obj)[0] + "<br>";
 }
 
 //Mvm mission and surplus rewards
@@ -798,13 +830,14 @@ const IHD_mvm_robo_hat_list = [
 
 //Reverse the missions inside obj and use the tourSignifier to generate tour objects to stick in outObj
 //In adition to adding the tour to "All Tours", aussie dropping tours will also add themselves to "Australium Dropped Tours"
+//abbreviation is used in warning to help identify what tour error'd
 //Tour signifier will be "Botkiller" for all tours except Two Cities which will be "Killstreak"
 //Mod is the amount of missions in a tour. This is only used to output a warning message as it's not reliable to keep track of tours this way.
-//Two Cities has two additional objs called "Mission Loot Amount Distribution" and "Tour Loot Amount Distribution" 
+//Two Cities has two additional objs called "Mission Loot Amount Distribution" (child: "Robot Parts Distribution") and "Tour Loot Amount Distribution"
 //  which counts how many times we got X objects of loot per mission / tour
 //Dry streak counting is also done in here. "Dry Streaks"
 //Example: IHD_mvm_temptour_reverse(tempTour["Steel Trap Tours"], "Botkiller", 6, IHD_tours_obj["Steel Trap Tours"])
-function IHD_mvm_temptour_reverse(obj, tourSignifier, mod, outObj) {
+function IHD_mvm_temptour_reverse(obj, abbreviation, tourSignifier, mod, outObj) {
     var tourNum = 1;
     var dryStreak = 0;
     var missionObj = {};
@@ -812,6 +845,9 @@ function IHD_mvm_temptour_reverse(obj, tourSignifier, mod, outObj) {
     var twoCitiesTourVar = 0;
     for (var missionNum = Object.keys(obj).length - 1; missionNum >= 0; missionNum--) {
         var twoCitiesMissionVar = 0;
+        var bwParts = 0;
+        var rParts = 0;
+        var pParts = 0;
         var specFabs = 0;
         var aussie = false;
         var tour = false;
@@ -820,6 +856,13 @@ function IHD_mvm_temptour_reverse(obj, tourSignifier, mod, outObj) {
                 twoCitiesTourVar += value;
                 if (!(key.includes("Australium") && !key.includes("Australium Gold")) && !key.includes("Killstreak")) {
                     twoCitiesMissionVar += value;
+                    if (key.includes("Battle-Worn")) {
+                        bwParts += value;
+                    } else if (key.includes("Reinforced")) {
+                        rParts += value;
+                    } else if (key.includes("Pristine")) {
+                        pParts += value;
+                    }
                 }
                 if (key.includes("Specialized")) {
                     specFabs++;
@@ -839,6 +882,12 @@ function IHD_mvm_temptour_reverse(obj, tourSignifier, mod, outObj) {
                 twoCitiesMissionVar++;
             }
             IHD_stats_add_item_to_obj(outObj["Mission Loot Amount Distribution"], twoCitiesMissionVar);
+            var partString = "B" + bwParts + "R" + rParts;
+            IHD_stats_add_item_to_obj(outObj["Mission Loot Amount Distribution"]["Robot Parts Distribution"], partString);
+            IHD_stats_add_item_to_obj(outObj["Mission Loot Amount Distribution"]["Robot Parts Distribution"], "Pristine: " + pParts);
+            if (bwParts > 6) {
+                IHD_debug_statements ? console.log("BW Parts over 6 at tour#" + tourNum) : 0;
+            }
         }
         if (tour) {
             IHD_stats_add_item_to_obj(outObj, "Total Tours");
@@ -853,7 +902,7 @@ function IHD_mvm_temptour_reverse(obj, tourSignifier, mod, outObj) {
 
 
             if (Object.keys(outObj["All Tours"]["Tour #" + tourNum]).length !== mod) {
-                console.warn("Tour #" + tourNum + " had abnormal amount of missions for that tour, probably skipped a mission: " + Object.keys(outObj["All Tours"]["Tour #" + tourNum]).length);
+                console.warn("(" + abbreviation + ")Tour #" + tourNum + " had abnormal amount of missions for that tour, probably skipped a mission: " + Object.keys(outObj["All Tours"]["Tour #" + tourNum]).length);
             } else if (tourSignifier === "Killstreak") { //Throwing out this data if we think it could be wrong
                 IHD_stats_add_item_to_obj(outObj["Tour Loot Amount Distribution"], twoCitiesTourVar);
             }
@@ -937,7 +986,9 @@ function IHD_mvm_stats_report() {
         "Two Cities Tours": {
             "Total Tours": 0,
             "Total Missions": 0,
-            "Mission Loot Amount Distribution": {},
+            "Mission Loot Amount Distribution": {
+                "Robot Parts Distribution": {}
+            },
             "Tour Loot Amount Distribution": {},
             "Australium Dropped Tours": {},
             "Dry Streaks": {},
@@ -968,8 +1019,8 @@ function IHD_mvm_stats_report() {
                 for (const [key2, value2] of Object.entries(value[IHD_items_lost_attr])) {
                     //Grab what tour number this was for
                     //Redunant check to see what tour we are in
-                    if ("name" in value2) {
-                        var name = IHD_inverted_dictionary[value2["name"]];
+                    if (IHD_name_attr in value2) {
+                        var name = IHD_inverted_dictionary[value2[IHD_name_attr]];
                         if (IHD_mvm_badge_list.includes(name)) {
                             switch (IHD_mvm_badge_list.indexOf(name)) {
                                 case 0:
@@ -996,8 +1047,8 @@ function IHD_mvm_stats_report() {
                 }
                 for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
                     //Tally all the items into IHD_mvm_obj
-                    if ("name" in value2) {
-                        name = IHD_inverted_dictionary[value2["name"]];
+                    if (IHD_name_attr in value2) {
+                        name = IHD_inverted_dictionary[value2[IHD_name_attr]];
                         IHD_stats_add_item_to_obj(tempMission, name);
                         if (name.includes("Golden Frying Pan") || (name.includes("Australium") && !name.includes("Australium Gold"))) {
                             IHD_stats_add_item_to_obj(IHD_mvm_obj, name, "Australiums");
@@ -1079,11 +1130,11 @@ function IHD_mvm_stats_report() {
                 console.log("Could not find a defined tour for mission at event #" + key);
             }
         }
-        IHD_mvm_temptour_reverse(tempTour["Oil Spill Tours"], "Botkiller", 6, IHD_tours_obj["Oil Spill Tours"]);
-        IHD_mvm_temptour_reverse(tempTour["Steel Trap Tours"], "Botkiller", 6, IHD_tours_obj["Steel Trap Tours"]);
-        IHD_mvm_temptour_reverse(tempTour["Mecha Engine Tours"], "Botkiller", 3, IHD_tours_obj["Mecha Engine Tours"]);
-        IHD_mvm_temptour_reverse(tempTour["Two Cities Tours"], "Killstreak", 4, IHD_tours_obj["Two Cities Tours"]);
-        IHD_mvm_temptour_reverse(tempTour["Gear Grinder Tours"], "Botkiller", 3, IHD_tours_obj["Gear Grinder Tours"]);
+        IHD_mvm_temptour_reverse(tempTour["Oil Spill Tours"], "OS", "Botkiller", 6, IHD_tours_obj["Oil Spill Tours"]);
+        IHD_mvm_temptour_reverse(tempTour["Steel Trap Tours"], "ST", "Botkiller", 6, IHD_tours_obj["Steel Trap Tours"]);
+        IHD_mvm_temptour_reverse(tempTour["Mecha Engine Tours"], "ME", "Botkiller", 3, IHD_tours_obj["Mecha Engine Tours"]);
+        IHD_mvm_temptour_reverse(tempTour["Two Cities Tours"], "TC", "Killstreak", 4, IHD_tours_obj["Two Cities Tours"]);
+        IHD_mvm_temptour_reverse(tempTour["Gear Grinder Tours"], "GG", "Botkiller", 3, IHD_tours_obj["Gear Grinder Tours"]);
     }
 
     //Surplus
@@ -1092,8 +1143,8 @@ function IHD_mvm_stats_report() {
             if (IHD_items_gained_attr in value) {
                 for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
                     //Tally all the items into IHD_surplus_obj
-                    if ("name" in value2) {
-                        name = IHD_inverted_dictionary[value2["name"]];
+                    if (IHD_name_attr in value2) {
+                        name = IHD_inverted_dictionary[value2[IHD_name_attr]];
                         if (IHD_weapon_list.includes(name) || IHD_weapon_list.includes(name.replace("The ", ""))) {
                             IHD_stats_add_item_to_obj(IHD_surplus_obj, name, "Weapons");
                         } else if (IHD_tool_list.includes(name)) {
@@ -1238,11 +1289,7 @@ function IHD_unbox_stats_report() {
     var errorCounter = 0;
     var drystreakCounter = 0;
     if ("8" in IHD_events_type_sorted) {
-        //Since the event ids are kinda random we just have to brute force check all
-        //of them up to what we currently have the obj_counter at.
-        //And reverse it so we can track drystreaks
-        for (var unboxNum = IHD_obj_counter - 1; unboxNum >= 0; unboxNum--) {
-            //for (const [key, value] of Object.entries(IHD_events_type_sorted["8"])) {
+        for (var unboxNum = 0; unboxNum < Object.keys(IHD_events_type_sorted["8"]).length; unboxNum++) {
             if (unboxNum in IHD_events_type_sorted["8"]) {
                 var value = IHD_events_type_sorted["8"][unboxNum];
                 if (IHD_items_lost_attr in value) {
@@ -1271,8 +1318,8 @@ function IHD_unbox_stats_report() {
                         //Add items; incriment counters
                         if (IHD_items_gained_attr in value) {
                             for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
-                                if ("name" in value2) {
-                                    var name = IHD_inverted_dictionary[value2["name"]];
+                                if (IHD_name_attr in value2) {
+                                    var name = IHD_inverted_dictionary[value2[IHD_name_attr]];
                                     if ("Effect" in value2) {
                                         name = "★ " + value2["Effect"] + " ★ " + name;
                                     }
@@ -1353,19 +1400,19 @@ function IHD_unbox_stats_report() {
                                         IHD_stats_add_item_to_obj(IHD_unbox_obj, name, ((crate_type[0] === "stocking") ? "Stockings" : "Crates"), crate_type[1]);
                                     }
                                     //Increment qualities
-                                    if ("Quality" in value2) {
-                                        var quality = value2["Quality"];
+                                    if (IHD_quality_attr in value2) {
+                                        var quality = value2[IHD_quality_attr];
                                         if (crate_type.length > 2) {
-                                            if (quality === "6" && !bonus) {
+                                            if (quality === 6 && !bonus) {
                                                 IHD_unbox_obj["Cases"]["Total Uniques"]++;
                                                 IHD_unbox_obj["Cases"][crate_type[1]]["Uniques"]++;
-                                            } else if (quality === "15") {
+                                            } else if (quality === 15) {
                                                 IHD_unbox_obj["Cases"]["Total Decorated Skins"]++;
                                                 IHD_unbox_obj["Cases"][crate_type[1]]["Decorated Skins"]++;
-                                            } else if (quality === "11") {
+                                            } else if (quality === 11) {
                                                 IHD_unbox_obj["Cases"]["Total Stranges"]++;
                                                 IHD_unbox_obj["Cases"][crate_type[1]]["Stranges"]++;
-                                            } else if (quality === "5" && !name.includes("Unusualifier")) { //Unusualifiers ARE NOT unusuals
+                                            } else if (quality === 5 && !name.includes("Unusualifier")) { //Unusualifiers ARE NOT unusuals
                                                 IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", "Total Unusuals");
                                                 IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], "Unusuals");
                                                 IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "All Unusuals");
@@ -1373,7 +1420,7 @@ function IHD_unbox_stats_report() {
                                                 drystreakCounter = 0;
                                             }
                                         } else if (crate_type[0] === "crate") { //Don't think stockings gave unusuals but just in case
-                                            if (quality === "5" && !name.includes("Unusualifier")) { //Unusualifiers ARE NOT unusuals
+                                            if (quality === 5 && !name.includes("Unusualifier")) { //Unusualifiers ARE NOT unusuals
                                                 IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Crates", "Total Unusuals");
                                                 IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "All Unusuals");
                                             }
@@ -1523,8 +1570,13 @@ function IHD_tradeup_report() {
                 if (Object.keys(value[IHD_items_lost_attr]).length === 5) { //Gambling we don't have exactly 5 missing assets
                     type = "Stat Clocks";
                 } else if (Object.keys(value[IHD_items_lost_attr]).length < 10) {
+                    if (Object.keys(value[IHD_items_lost_attr]).length === 0) { //If there isn't any items it's going to crash later
+                        console.warn("Trade up only had no items lost. Skipping.");
+                        IHD_debug_statements ? console.log(value[IHD_time_attr]) : 0;
+                        continue;
+                    }
                     console.warn("Trade up only had " + Object.keys(value[IHD_items_lost_attr]).length + " items instead of expected 10.");
-                    IHD_debug_statements ? console.log(value["time"]) : 0;
+                    IHD_debug_statements ? console.log(value[IHD_time_attr]) : 0;
                 }
 
                 for (const [key2, value2] of Object.entries(value[IHD_items_lost_attr])) {
@@ -1554,20 +1606,20 @@ function IHD_tradeup_report() {
                         console.warn("Couldn't find a rarity in the first item lost for trade up #" + key + ". This event will be marked as an error.");
                         grade = "Errors";
                     }
-                    if ("Quality" in value2) {
-                        var quality = value2["Quality"];
-                        if (quality === "6") {
+                    if (IHD_quality_attr in value2) {
+                        var quality = value2[IHD_quality_attr];
+                        if (quality === 6) {
                             quality = "Unique";
-                        } else if (quality === "11") {
+                        } else if (quality === 11) {
                             quality = "Strange";
-                        } else if (quality === "15") {
+                        } else if (quality === 15) {
                             quality = "Unique Paints";
                         } else {
                             console.warn("Somehow quality for tradeup was not unique or strange and was instead: " + quality);
                             quality = "Error";
                         }
-                        if ("name" in value2) {
-                            var name = IHD_inverted_dictionary[value2["name"]];
+                        if (IHD_name_attr in value2) {
+                            var name = IHD_inverted_dictionary[value2[IHD_name_attr]];
                             IHD_stats_add_item_to_obj(IHD_tradeup_obj, name, type, "Total Used Items", quality);
                             if (type.startsWith("Item")) {
                                 IHD_stats_add_item_to_obj(IHD_tradeup_obj, name, type, grade, "Used Items", quality);
@@ -1575,8 +1627,8 @@ function IHD_tradeup_report() {
                             IHD_stats_add_item_to_obj(tradeup_obj, name, "Lost");
                         }
                     } else {
-                        if ("name" in value2) {
-                            name = IHD_inverted_dictionary[value2["name"]];
+                        if (IHD_name_attr in value2) {
+                            name = IHD_inverted_dictionary[value2[IHD_name_attr]];
                             IHD_stats_add_item_to_obj(IHD_tradeup_obj, name, type, "Total Used Items");
                             if (type.startsWith("Item")) {
                                 IHD_stats_add_item_to_obj(IHD_tradeup_obj, name, type, grade, "Used Items");
@@ -1588,13 +1640,13 @@ function IHD_tradeup_report() {
             }
             if (IHD_items_gained_attr in value) {
                 for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
-                    if ("Quality" in value2) {
-                        quality = value2["Quality"];
-                        if (quality === "6") {
+                    if (IHD_quality_attr in value2) {
+                        quality = value2[IHD_quality_attr];
+                        if (quality === 6) {
                             quality = "Unique";
-                        } else if (quality === "11") {
+                        } else if (quality === 11) {
                             quality = "Strange";
-                        } else if (quality === "15") {
+                        } else if (quality === 15) {
                             quality = "Unique Paints";
                         } else {
                             console.warn("Somehow quality for tradeup was not unique or strange and was instead: " + quality);
@@ -1603,8 +1655,8 @@ function IHD_tradeup_report() {
                             }
                             quality = "Errors";
                         }
-                        if ("name" in value2) {
-                            name = IHD_inverted_dictionary[value2["name"]];
+                        if (IHD_name_attr in value2) {
+                            name = IHD_inverted_dictionary[value2[IHD_name_attr]];
                             if (type === "Stat Clocks") {
                                 IHD_stats_add_item_to_obj(IHD_tradeup_obj, name, type, "Total Created Items");
                             } else {
@@ -1616,8 +1668,8 @@ function IHD_tradeup_report() {
                             }
                         }
                     } else {
-                        if ("name" in value2) {
-                            name = IHD_inverted_dictionary[value2["name"]];
+                        if (IHD_name_attr in value2) {
+                            name = IHD_inverted_dictionary[value2[IHD_name_attr]];
                             IHD_stats_add_item_to_obj(IHD_tradeup_obj, name, type, "Total Created Items");
                             if (type.startsWith("Item")) {
                                 IHD_stats_add_item_to_obj(IHD_tradeup_obj, name, type, grade, "Created Items", quality);
@@ -1671,8 +1723,8 @@ function IHD_mannco_purchases_report() {
         for (const [key, value] of Object.entries(IHD_events_type_sorted["9"])) {
             if (IHD_items_gained_attr in value) {
                 for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
-                    if ("name" in value2) {
-                        var name = IHD_inverted_dictionary[value2["name"]];
+                    if (IHD_name_attr in value2) {
+                        var name = IHD_inverted_dictionary[value2[IHD_name_attr]];
                         if (name.startsWith("Taunt")) {
                             IHD_stats_add_item_to_obj(IHD_purchases_obj, name, "Taunts");
                         } else if (name.startsWith("Unlocked")) {
@@ -1708,8 +1760,8 @@ function IHD_deleted_report() {
         for (const [key, value] of Object.entries(IHD_events_type_sorted["13"])) {
             if (IHD_items_lost_attr in value) {
                 for (const [key2, value2] of Object.entries(value[IHD_items_lost_attr])) {
-                    if ("name" in value2) {
-                        var name = IHD_inverted_dictionary[value2["name"]];
+                    if (IHD_name_attr in value2) {
+                        var name = IHD_inverted_dictionary[value2[IHD_name_attr]];
                         if (IHD_weapon_list.includes(name) || IHD_weapon_list.includes(name.replace("The ", ""))) {
                             IHD_stats_add_item_to_obj(IHD_deleted_obj, name, "Weapons");
                         } else {
@@ -1737,8 +1789,8 @@ function IHD_used_report() {
         for (const [key, value] of Object.entries(IHD_events_type_sorted["21"])) {
             if (IHD_items_lost_attr in value) {
                 for (const [key2, value2] of Object.entries(value[IHD_items_lost_attr])) {
-                    if ("name" in value2) {
-                        var name = IHD_inverted_dictionary[value2["name"]];
+                    if (IHD_name_attr in value2) {
+                        var name = IHD_inverted_dictionary[value2[IHD_name_attr]];
                         IHD_stats_add_item_to_obj(IHD_used_obj, name, "Used Items");
                     }
                 }
@@ -1777,8 +1829,8 @@ function IHD_found_report() {
             if (IHD_items_gained_attr in value) {
                 var crate_type = IHD_get_crate_name(value[IHD_items_gained_attr], false); //Do not output debug because we expect non-cases
                 for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
-                    if ("name" in value2) {
-                        var name = IHD_inverted_dictionary[value2["name"]];
+                    if (IHD_name_attr in value2) {
+                        var name = IHD_inverted_dictionary[value2[IHD_name_attr]];
                         if (name.startsWith("Taunt")) {
                             IHD_stats_add_item_to_obj(IHD_found_obj, name, "Taunts");
                         } else if (crate_type[0] === "case") {
@@ -1824,8 +1876,8 @@ function IHD_crafted_report() {
         for (const [key, value] of Object.entries(IHD_events_type_sorted["42"])) {
             if (IHD_items_lost_attr in value) {
                 for (const [key2, value2] of Object.entries(value[IHD_items_lost_attr])) {
-                    if ("name" in value2) {
-                        var name = IHD_inverted_dictionary[value2["name"]];
+                    if (IHD_name_attr in value2) {
+                        var name = IHD_inverted_dictionary[value2[IHD_name_attr]];
                         if (name.includes("Token")) {
                             IHD_stats_add_item_to_obj(IHD_crafted_obj, name, "Used Items", "Tokens");
                         } else if (name === "Refined Metal" || name === "Reclaimed Metal" || name === "Scrap Metal") {
@@ -1840,8 +1892,8 @@ function IHD_crafted_report() {
             }
             if (IHD_items_gained_attr in value) {
                 for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
-                    if ("name" in value2) {
-                        name = IHD_inverted_dictionary[value2["name"]];
+                    if (IHD_name_attr in value2) {
+                        name = IHD_inverted_dictionary[value2[IHD_name_attr]];
                         if (name.includes("Token")) {
                             IHD_stats_add_item_to_obj(IHD_crafted_obj, name, "Created Items", "Tokens");
                         } else if (name === "Refined Metal" || name === "Reclaimed Metal" || name === "Scrap Metal") {
@@ -1870,8 +1922,8 @@ function IHD_earned_report() {
         for (const [key, value] of Object.entries(IHD_events_type_sorted["43"])) {
             if (IHD_items_gained_attr in value) {
                 for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
-                    if ("name" in value2) {
-                        var name = IHD_inverted_dictionary[value2["name"]];
+                    if (IHD_name_attr in value2) {
+                        var name = IHD_inverted_dictionary[value2[IHD_name_attr]];
                         IHD_stats_add_item_to_obj(IHD_earned_obj, name, "Earned");
                     }
                 }
@@ -1892,8 +1944,8 @@ function IHD_blood_money_report() {
         for (const [key, value] of Object.entries(IHD_events_type_sorted["56"])) {
             if (IHD_items_gained_attr in value) {
                 for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
-                    if ("name" in value2) {
-                        var name = IHD_inverted_dictionary[value2["name"]];
+                    if (IHD_name_attr in value2) {
+                        var name = IHD_inverted_dictionary[value2[IHD_name_attr]];
                         IHD_stats_add_item_to_obj(IHD_blood_obj, name, "Blood Money Purchases");
                     }
                 }
@@ -1911,8 +1963,8 @@ function IHD_blood_money_report() {
 //Example data for stocking ["stocking", name]
 function IHD_get_crate_name(lost_items, bLog) {
     for (const [key, value] of Object.entries(lost_items)) {
-        if ("name" in value) {
-            var name = IHD_inverted_dictionary[value["name"]];
+        if (IHD_name_attr in value) {
+            var name = IHD_inverted_dictionary[value[IHD_name_attr]];
             if (name.includes("Weapons Case")) {
                 return ["case", "Skin Cases", name.substr(0, name.indexOf("Weapons Case")).trim()];
             } else if (name.includes("War Paint Case")) {
@@ -1968,6 +2020,7 @@ var IHD_ignore_key_totals = {
     "All Tours": 1,
     "Total Missions": 1,
     "Mission Loot Amount Distribution": 1,
+    "Robot Parts Distribution": 1,
     "Tour Loot Amount Distribution": 1,
     "Dry Streaks": 1,
     "Current Drystreak": 1
@@ -2017,7 +2070,7 @@ function IHD_enableButton() {
     IHD_stats_button.disabled = false;
     IHD_stop_button.disabled = true;
     IHD_ready_to_load = true;
-    IHD_json_object["dictionary"] = IHD_inverted_dictionary;
+    IHD_json_object["name_dictionary"] = IHD_inverted_dictionary;
     IHD_json_object["type_dictionary"] = IHD_inverted_type_dictionary;
     IHD_json_object["other_dictionary"] = IHD_inverted_other_dictionary;
     IHD_json_object[IHD_start_cursor_attr] = IHD_start_cursor;
@@ -2200,14 +2253,27 @@ function IHD_usedEventIsUnbox(eventId, save) {
 function IHD_saveLastEventUsed(lastEvent) {
     if (IHD_used_temp_obj.event === 21 //Change used event to unbox event if the item we used is in the crate array IHD_crate_items_used
         && Object.keys(IHD_used_temp_obj[IHD_items_lost_attr]).length > 0
-        && IHD_crate_items_used.includes(IHD_inverted_dictionary[IHD_used_temp_obj[IHD_items_lost_attr][0].name])) {
+        && IHD_crate_items_used.includes(IHD_inverted_dictionary[IHD_used_temp_obj[IHD_items_lost_attr][0][IHD_name_attr]])) {
         IHD_used_temp_obj.event = 8;
     }
-    IHD_json_object[IHD_events_attr][IHD_obj_counter] = IHD_used_temp_obj;
-    IHD_obj_counter++;
+    IHD_saveEvent(IHD_used_temp_obj);
     IHD_last_event_used = lastEvent;
     IHD_used_temp_obj = {};
 }
+
+//Save a given event to the proper day object or create said day if it doesn't exist (and add the event)
+function IHD_saveEvent(event) {
+    var IHD_day = Date.parse(event[IHD_time_attr].substr(0, event[IHD_time_attr].indexOf(",") + 6));
+    if (IHD_json_object[IHD_events_attr][IHD_day]) {
+        var event_num = Object.keys(IHD_json_object[IHD_events_attr][IHD_day]).length;
+        IHD_json_object[IHD_events_attr][IHD_day][event_num] = event;
+    } else {
+        IHD_json_object[IHD_events_attr][IHD_day] = {};
+        IHD_json_object[IHD_events_attr][IHD_day][0] = event;
+    }
+}
+
+
 /*
 This function grabs all the essential data from a row and makes a json object from it.
 After the data is retrieved we delete the row to keep the page from becoming too large.
@@ -2235,7 +2301,7 @@ function IHD_tradeHistoryRowToJson() {
     //Time
     var IHD_time = this.getElementsByClassName("tradehistory_date")[0].textContent.trim();
     IHD_time = IHD_time.replace(/\s\s+/g, ' ');
-    IHD_inventory_event.time = IHD_time;
+    IHD_inventory_event[IHD_time_attr] = IHD_time;
     //Items
     var IHD_items_temp1 = this.getElementsByClassName("tradehistory_items_plusminus")[0];
     var IHD_items_temp2 = this.getElementsByClassName("tradehistory_items_plusminus")[1];
@@ -2278,9 +2344,8 @@ function IHD_tradeHistoryRowToJson() {
     }
     this.remove();
     //Used event
-
-    if (((Object.keys(IHD_items_lost).length > 0 && IHD_crate_items_used.includes(IHD_inverted_dictionary[IHD_items_lost[0].name]))
-        || (IHD_used_temp_obj[IHD_items_lost_attr] && IHD_crate_items_used.includes(IHD_inverted_dictionary[IHD_used_temp_obj[IHD_items_lost_attr][0].name])))
+    if (((Object.keys(IHD_items_lost).length > 0 && IHD_crate_items_used.includes(IHD_inverted_dictionary[IHD_items_lost[0][IHD_name_attr]]))
+        || (IHD_used_temp_obj[IHD_items_lost_attr] && IHD_crate_items_used.includes(IHD_inverted_dictionary[IHD_used_temp_obj[IHD_items_lost_attr][0][IHD_name_attr]])))
         && IHD_usedEventIsUnbox(IHD_eventId, true)) { //Objects lost are a crate AND valid used event
 
         if (IHD_eventId === 21) {
@@ -2299,8 +2364,7 @@ function IHD_tradeHistoryRowToJson() {
             }
         }
     } else { //Normal event
-        IHD_json_object[IHD_events_attr][IHD_obj_counter] = IHD_inventory_event;
-        IHD_obj_counter++;
+        IHD_saveEvent(IHD_inventory_event);
     }
 }
 
@@ -2349,8 +2413,12 @@ function IHD_itemsToJson(itemDiv, event) {
         //This check should stop unknown asset crashes however,
         // it might be better to let the crash happen and have the
         // user retry it since we otherwise skip the event the asset was in.
+        if (!(el.hasAttribute("data-appid"))) {
+            console.warn("data-appid not found in asset: " + IHD_item_combinedID + " during cursor: " + JSON.stringify(g_historyCursor) + " or prev cursor: " + JSON.stringify(IHD_prev_cursor));
+            return;
+        }
         if (!g_rgDescriptions[el.getAttribute("data-appid")][IHD_item_combinedID]) {
-            console.warn("Unknown asset skipped during cursor: " + g_historyCursor + " or prev cursor: " + IHD_prev_cursor);
+            console.warn("Unknown asset skipped during cursor: " + JSON.stringify(g_historyCursor) + " or prev cursor: " + JSON.stringify(IHD_prev_cursor));
             console.warn("Unknown asset combinedID: " + IHD_item_combinedID);
             IHD_skipped_asset_counter++;
             return;
@@ -2426,21 +2494,21 @@ function IHD_itemsToJson(itemDiv, event) {
                     }
                 }
                 if (key === "app_data") {
-                    IHD_item_json.Quality = value.quality;
+                    IHD_item_json[IHD_quality_attr] = Number(value.quality);
                 }
                 if (key === "market_hash_name") {
-                    IHD_item_json.name = IHD_add_to_dict("name", value);
+                    IHD_item_json[IHD_name_attr] = IHD_add_to_dict("name", value);
                 }
                 if (key === "type" && value.length > 0) {
                     if (value.includes("Level")) {
                         var splitVal = value.split(" ");
                         for (var o = 0; o < splitVal.length; o++) {
                             if (splitVal[o].trim() === "Level") {
-                                IHD_item_json.Level = splitVal[o + 1].trim();
+                                IHD_item_json[IHD_level_attr] = Number(splitVal[o + 1].trim());
                                 break;
                             }
                         }
-                        var type = value.slice(value.indexOf(IHD_item_json.Level) + IHD_item_json.Level.length).trim();
+                        var type = value.slice(value.indexOf(IHD_item_json[IHD_level_attr].toString()) + IHD_item_json[IHD_level_attr].toString().length).trim();
                         IHD_item_json[IHD_items_type_attr] = IHD_add_to_dict("type", type);
                     } else {
                         IHD_item_json[IHD_items_type_attr] = IHD_add_to_dict("type", value);
@@ -2448,7 +2516,7 @@ function IHD_itemsToJson(itemDiv, event) {
                 }
             }
             //If it's unusual we want to grab the effect
-            if (IHD_item_json.Quality === "5") {
+            if (IHD_item_json[IHD_quality_attr] === 5) {
                 IHD_item_data.descriptions.every(IHD_obj => {
                     for (const [key2, value2] of Object.entries(IHD_obj)) {
                         if (typeof value2 === "string" && value2.includes("★ Unusual Effect: ")) {
