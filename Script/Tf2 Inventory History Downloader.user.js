@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.9
+// @version      0.9.1
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -544,8 +544,10 @@ function IHD_read_file_objects(objects) {
                     //If the day already exists, check if the event was already recorded
                     if (duplicateDay) {
                         //If the day is 100% a dupe then every key should match and we can skip checking against every existing event
-                        if (IHD_duplicate_entry_checker(event, IHD_json_object[IHD_events_attr][day][key], true)) {
-                            continue;
+                        if (IHD_json_object[IHD_events_attr][day][key]) {
+                            if (IHD_duplicate_entry_checker(IHD_new_event, IHD_json_object[IHD_events_attr][day][key], true)) {
+                                continue;
+                            }
                         }
                         //Day is only partially the same so we need to check every event to every other event
                         //TODO? Using strict = true here as an assumption that no one will be splitting a download
@@ -553,7 +555,7 @@ function IHD_read_file_objects(objects) {
                         //  happen and events will be lost, probably not worth the time to properly check
                         var duplicateEvent = false;
                         for (const [oldEventKey, oldEvent] of Object.entries(IHD_json_object[IHD_events_attr][day])) {
-                            if (IHD_duplicate_entry_checker(event, oldEvent, true)) {
+                            if (IHD_duplicate_entry_checker(IHD_new_event, oldEvent, true)) {
                                 duplicateEvent = true;
                                 break;
                             }
@@ -1127,7 +1129,7 @@ function IHD_mvm_stats_report() {
                 }
                 tempTour[tour][mission] = { ...tempMission };
             } else if (IHD_debug_statements) {
-                console.log("Could not find a defined tour for mission at event #" + key);
+                console.log("Could not find a defined tour for mission on " + value[IHD_time_attr]);
             }
         }
         IHD_mvm_temptour_reverse(tempTour["Oil Spill Tours"], "OS", "Botkiller", 6, IHD_tours_obj["Oil Spill Tours"]);

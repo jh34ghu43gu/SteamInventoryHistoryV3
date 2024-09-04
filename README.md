@@ -27,6 +27,11 @@
    
 # Versions
 
+ ## 0.9.1
+ * Fixed an error when combining files where one day had more events than the other file
+ * Fixed comparing events to actually use the same dictionary
+ * Updated a debug statement to report a date instead of a useless internal event id
+
  ## 0.9 (NOT BACKWARDS COMPATABILE WITH PRIOR DOWNLOADS)
  * File size improvements (#27)
    * Major keys are assigned abbreviations for the download
