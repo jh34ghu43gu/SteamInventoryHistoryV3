@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.9.1
+// @version      0.9.2
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -30,9 +30,11 @@ var IHD_quality_attr = "Q";
 var IHD_start_cursor_attr = "starting_cursor";
 var IHD_end_cursor_attr = "ending_cursor";
 var IHD_time_zone_attr = "LocalTimeZone";
+var IHD_skipped_cursors_attr = "Skipped_Cursors";
 
 var IHD_json_object = {
-    [IHD_events_attr]: {}
+    [IHD_events_attr]: {},
+    [IHD_skipped_cursors_attr]: {}
 };
 var IHD_file_list;
 var IHD_dictionary = {};
@@ -45,12 +47,13 @@ var IHD_loop;
 var IHD_dict_counter = 1; //Logic errors when reading if we start at 0 (inverse dictionary can't write a 0 key?)
 var IHD_type_dict_counter = 1;
 var IHD_other_dict_counter = 1;
-var IHD_skipped_asset_counter = 0;
 var IHD_ready_to_load = true;
 var IHD_start_cursor;
 var IHD_prev_cursor;
 var IHD_retry_counter = 0;
-var IHD_max_retries = 100; //Retry on errors (not 429) this many times.
+var IHD_max_retries = 100; //Retry on HTTP errors (not 429) this many times.
+var IHD_event_retry_counter = 0;
+var IHD_max_event_retries = 10; //Retry on unknown event asset fails this many times.
 var IHD_debug_statements = false;
 
 
@@ -420,7 +423,21 @@ function IHD_addButtons(jNode) {
         IHD_loop = setInterval(() => {
             if (IHD_ready_to_load) {
                 IHD_ready_to_load = false;
-                IHD_gatherVisibleItems();
+
+                var eventSuccess = IHD_gatherVisibleItems();
+                if ((!eventSuccess) && IHD_event_retry_counter < IHD_max_event_retries) {
+                    IHD_event_retry_counter++;
+                    g_historyCursor = IHD_prev_cursor;
+                    IHD_debug_statements ? console.log("Retry #" + IHD_event_retry_counter + " for unknown assets.") : false;
+                } else {
+                    if (IHD_event_retry_counter >= IHD_max_event_retries) {
+                        console.warn("Attempted to reload unknown assets " + IHD_event_retry_counter + " times but was unsuccessful. "
+                            + "The group of events at cursor:'" + JSON.stringify(IHD_prev_cursor) + "' has been skipped. "
+                            + "This cursor has been logged in the download file so you can attempt to manually load it later.");
+                        IHD_json_object[IHD_skipped_cursors_attr][Object.keys(IHD_json_object[IHD_skipped_cursors_attr]).length] = IHD_prev_cursor;
+                    }
+                    IHD_event_retry_counter = 0;
+                }
                 if (!Array.isArray(g_historyCursor)) { //If you are on the last page and try to download it will loop back to the start because history cursor is an empty array.
                     IHD_loadMoreItems();
                 } else {
@@ -564,8 +581,6 @@ function IHD_read_file_objects(objects) {
                             continue;
                         }
                     }
-
-
                     //Store the event till we're done with the day
                     IHD_new_events[Object.keys(IHD_new_events).length] = IHD_new_event;
                 }
@@ -901,7 +916,6 @@ function IHD_mvm_temptour_reverse(obj, abbreviation, tourSignifier, mod, outObj)
             } else {
                 dryStreak++;
             }
-
 
             if (Object.keys(outObj["All Tours"]["Tour #" + tourNum]).length !== mod) {
                 console.warn("(" + abbreviation + ")Tour #" + tourNum + " had abnormal amount of missions for that tour, probably skipped a mission: " + Object.keys(outObj["All Tours"]["Tour #" + tourNum]).length);
@@ -2104,7 +2118,20 @@ function IHD_clearTradeRow() {
 }
 
 function IHD_gatherVisibleItems() {
-    $(".tradehistoryrow").each(IHD_tradeHistoryRowToJson);
+    var IHD_temp_events = {
+        0: false
+    };
+    $(".tradehistoryrow").each(function (index, element) {
+        IHD_tradeHistoryRowToJson(element, IHD_temp_events);
+    });
+    if (IHD_temp_events[0]) { //0 Is reserved for missing asset mark
+        IHD_debug_statements ? console.log("Failed to get all assets, returning false from IHD_gatherVisibleItems()") : false;
+        return false;
+    }
+    for (var i = 1; i < Object.keys(IHD_temp_events).length; i++) {
+        IHD_saveEvent(IHD_temp_events[i]);
+    }
+    return true;
 }
 
 //Translate events into ids, events that have dynamic player names recieve an id of 100 something
@@ -2154,7 +2181,6 @@ function IHD_loadMoreItems() {
             if (data.html && data.descriptions) {
                 $J('#inventory_history_table').append(data.html);
                 g_rgDescriptions = data.descriptions;
-                //IHD_gatherVisibleItems();
             } else {
                 console.warn("IHD - Data did not return an html object or descriptions object.");
                 IHD_enableButton();
@@ -2166,7 +2192,7 @@ function IHD_loadMoreItems() {
             }
             else {
                 console.warn("IHD - Data did not return a cursor. Probably at end of history.");
-                IHD_gatherVisibleItems();
+                IHD_gatherVisibleItems(); //CBA testing if I can loop this to retry on an asset fail on the last page so hopefully that never happens.
                 IHD_enableButton();
             }
         } else {
@@ -2230,20 +2256,20 @@ function IHD_shouldRecordEvent(eventId) {
 
 //Deals with the used event -> unbox event logic
 //Returns false if not an unbox event and true if it is an unbox event or potentially could become one
-function IHD_usedEventIsUnbox(eventId, save) {
+function IHD_usedEventIsUnbox(eventId, save, tempEventsObj) {
     if ((IHD_last_event_used > 0 && eventId === 20)) {
         //We got a gift and we are currently tracking an unbox conversion so return true
         return true;
     } else if (IHD_last_event_used === 2 && eventId === 21) {
         //We were in a valid conversion and need to stop because we potentially have a new one starting so save and return true
-        if (save) { IHD_saveLastEventUsed(1); }
+        if (save) { IHD_saveLastEventUsed(1, tempEventsObj); }
         return true;
     } else if (eventId === 21) {
         //Potentially an unbox conversion, return true
         return true;
     } else if (IHD_last_event_used > 0) {
         //We were in a (potential) conversion but there isn't a new one coming up so we can save the event as is and reset the tracking var and return false
-        if (save) { IHD_saveLastEventUsed(0); }
+        if (save) { IHD_saveLastEventUsed(0, tempEventsObj); }
         return false;
     } else {
         //Passed an irrelevant event id
@@ -2252,13 +2278,14 @@ function IHD_usedEventIsUnbox(eventId, save) {
 }
 
 //Save the used_temp_obj, takes the arg lastEvent which IHD_last_event_used will be set to (0 for none, 1 for used, 2 for recieved gift + used before that).
-function IHD_saveLastEventUsed(lastEvent) {
+//No longer passes to IHD_saveEvent as of 0.9.2 but places the event in the tempEventsObj that is passed from IHD_gatherVisibleItems
+function IHD_saveLastEventUsed(lastEvent, tempEventsObj) {
     if (IHD_used_temp_obj.event === 21 //Change used event to unbox event if the item we used is in the crate array IHD_crate_items_used
         && Object.keys(IHD_used_temp_obj[IHD_items_lost_attr]).length > 0
         && IHD_crate_items_used.includes(IHD_inverted_dictionary[IHD_used_temp_obj[IHD_items_lost_attr][0][IHD_name_attr]])) {
         IHD_used_temp_obj.event = 8;
     }
-    IHD_saveEvent(IHD_used_temp_obj);
+    tempEventsObj[Object.keys(tempEventsObj).length] = IHD_used_temp_obj;
     IHD_last_event_used = lastEvent;
     IHD_used_temp_obj = {};
 }
@@ -2276,6 +2303,25 @@ function IHD_saveEvent(event) {
 }
 
 
+//Helper function for IHD_tradeHistoryRowToJson that gathers items into the correct IHD_inventory_event attribute
+function IHD_tradeHistoryRowToJsonHelper(inventoryEvent, text, time, event, items, tempEvent) {
+    if (items[0] === false) {
+        tempEvent[0] = true;
+        return;
+    }
+    if (text === "+") {
+        inventoryEvent[IHD_items_gained_attr] = items;
+    } else if (text === "-") {
+        inventoryEvent[IHD_items_lost_attr] = items;
+    } else if (event === 100) {
+        inventoryEvent[IHD_items_hold_attr] = items;
+    } else if (event === 30) {
+        inventoryEvent[IHD_items_gained_attr] = items;
+    } else {
+        console.log("IHD - Unexpected text; not + or - instead was " + text + " for date: " + time);
+    }
+}
+
 /*
 This function grabs all the essential data from a row and makes a json object from it.
 After the data is retrieved we delete the row to keep the page from becoming too large.
@@ -2289,67 +2335,44 @@ Data we want is:
     *Secondary Quality
 
 */
-function IHD_tradeHistoryRowToJson() {
+function IHD_tradeHistoryRowToJson(row, tempEventsObj) {
     var IHD_inventory_event = {};
 
     //Event
-    var IHD_eventName = this.getElementsByClassName("tradehistory_event_description")[0].textContent.trim();
+    var IHD_eventName = row.getElementsByClassName("tradehistory_event_description")[0].textContent.trim();
     var IHD_eventId = IHD_eventToEventId(IHD_eventName);
     if (!IHD_shouldRecordEvent(IHD_eventId)) {
-        this.remove();
+        row.remove();
         return;
     }
     IHD_inventory_event.event = IHD_eventToEventId(IHD_eventName);
     //Time
-    var IHD_time = this.getElementsByClassName("tradehistory_date")[0].textContent.trim();
+    var IHD_time = row.getElementsByClassName("tradehistory_date")[0].textContent.trim();
     IHD_time = IHD_time.replace(/\s\s+/g, ' ');
     IHD_inventory_event[IHD_time_attr] = IHD_time;
     //Items
-    var IHD_items_temp1 = this.getElementsByClassName("tradehistory_items_plusminus")[0];
-    var IHD_items_temp2 = this.getElementsByClassName("tradehistory_items_plusminus")[1];
-    var IHD_items_gained = {};
+    var IHD_items_temp1 = row.getElementsByClassName("tradehistory_items_plusminus")[0];
+    var IHD_items_temp2 = row.getElementsByClassName("tradehistory_items_plusminus")[1];
     var IHD_items_lost = {};
-    var IHD_items_hold = {};
     if (IHD_items_temp1) {
-        if (IHD_items_temp1.textContent === "+") {
-            IHD_items_gained = IHD_itemsToJson(IHD_items_temp1.nextElementSibling, IHD_eventName);
-            IHD_inventory_event[IHD_items_gained_attr] = IHD_items_gained;
-        } else if (IHD_items_temp1.textContent === "-") {
-            IHD_items_lost = IHD_itemsToJson(IHD_items_temp1.nextElementSibling, IHD_eventName);
-            IHD_inventory_event[IHD_items_lost_attr] = IHD_items_lost;
-        } else if (IHD_eventId === 100) {
-            IHD_items_hold = IHD_itemsToJson(IHD_items_temp1.nextElementSibling, IHD_eventName);
-            IHD_inventory_event[IHD_items_hold_attr] = IHD_items_hold;
-        } else if (IHD_eventId === 30) {
-            IHD_items_gained = IHD_itemsToJson(IHD_items_temp1.nextElementSibling, IHD_eventName);
-            IHD_inventory_event[IHD_items_gained_attr] = IHD_items_gained;
-        } else {
-            console.log("IHD - Unexpected text; not + or - instead was " + IHD_items_temp1.textContent + " for date: " + IHD_time);
+        var items = IHD_itemsToJson(IHD_items_temp1.nextElementSibling, IHD_eventName)
+        IHD_tradeHistoryRowToJsonHelper(IHD_inventory_event, IHD_items_temp1.textContent, IHD_time, IHD_eventId, items, tempEventsObj, IHD_items_lost);
+        if (IHD_items_temp1.textContent === "-") {
+            IHD_items_lost = items; //Can't handle this in the helper method for some reason
         }
     }
     if (IHD_items_temp2) {
-        if (IHD_items_temp2.textContent === "+") {
-            IHD_items_gained = IHD_itemsToJson(IHD_items_temp2.nextElementSibling, IHD_eventName);
-            IHD_inventory_event[IHD_items_gained_attr] = IHD_items_gained;
-        } else if (IHD_items_temp2.textContent === "-") {
-            IHD_items_lost = IHD_itemsToJson(IHD_items_temp2.nextElementSibling, IHD_eventName);
-            IHD_inventory_event[IHD_items_lost_attr] = IHD_items_lost;
-        } else if (IHD_eventId === 100) {
-            IHD_items_hold = IHD_itemsToJson(IHD_items_temp1.nextElementSibling, IHD_eventName);
-            IHD_inventory_event[IHD_items_hold_attr] = IHD_items_hold;
-        } else if (IHD_eventId === 30) {
-            IHD_items_gained = IHD_itemsToJson(IHD_items_temp1.nextElementSibling, IHD_eventName);
-            IHD_inventory_event[IHD_items_gained_attr] = IHD_items_gained;
-        } else {
-            console.log("IHD - Unexpected text; not + or - instead was " + IHD_items_temp2.textContent + " for date: " + IHD_time);
+        var items2 = IHD_itemsToJson(IHD_items_temp2.nextElementSibling, IHD_eventName);
+        IHD_tradeHistoryRowToJsonHelper(IHD_inventory_event, IHD_items_temp2.textContent, IHD_time, IHD_eventId, items2, tempEventsObj, IHD_items_lost);
+        if (IHD_items_temp1.textContent === "-") {
+            IHD_items_lost = items; //Can't handle this in the helper method for some reason
         }
     }
-    this.remove();
+    row.remove();
     //Used event
     if (((Object.keys(IHD_items_lost).length > 0 && IHD_crate_items_used.includes(IHD_inverted_dictionary[IHD_items_lost[0][IHD_name_attr]]))
         || (IHD_used_temp_obj[IHD_items_lost_attr] && IHD_crate_items_used.includes(IHD_inverted_dictionary[IHD_used_temp_obj[IHD_items_lost_attr][0][IHD_name_attr]])))
-        && IHD_usedEventIsUnbox(IHD_eventId, true)) { //Objects lost are a crate AND valid used event
-
+        && IHD_usedEventIsUnbox(IHD_eventId, true, tempEventsObj)) { //Objects lost are a crate AND valid used event
         if (IHD_eventId === 21) {
             IHD_used_temp_obj = IHD_inventory_event;
             IHD_last_event_used = 1;
@@ -2366,7 +2389,7 @@ function IHD_tradeHistoryRowToJson() {
             }
         }
     } else { //Normal event
-        IHD_saveEvent(IHD_inventory_event);
+        tempEventsObj[Object.keys(tempEventsObj).length] = IHD_inventory_event;
     }
 }
 
@@ -2399,9 +2422,12 @@ function IHD_add_to_dict(dictionaryType, value) {
 
 //g_rgDescriptions is defined on the page this is meant to run on
 function IHD_itemsToJson(itemDiv, event) {
-    var IHD_items_json = {};
+    var IHD_items_json = { 0: true };
     var i = 0;
     Array.from(itemDiv.getElementsByClassName("history_item")).forEach((el) => {
+        if (IHD_items_json[0] === false) {
+            return;
+        }
         var IHD_item_json = {};
         var IHD_item_classid = el.getAttribute("data-classid");
         var IHD_item_instanceid = el.getAttribute("data-instanceid");
@@ -2415,14 +2441,15 @@ function IHD_itemsToJson(itemDiv, event) {
         //This check should stop unknown asset crashes however,
         // it might be better to let the crash happen and have the
         // user retry it since we otherwise skip the event the asset was in.
-        if (!(el.hasAttribute("data-appid"))) {
+        if (!(el.hasAttribute("data-appid")) || !(g_rgDescriptions.hasOwnProperty(el.getAttribute("data-appid")))) {
             console.warn("data-appid not found in asset: " + IHD_item_combinedID + " during cursor: " + JSON.stringify(g_historyCursor) + " or prev cursor: " + JSON.stringify(IHD_prev_cursor));
+            IHD_items_json[0] = false;
             return;
         }
         if (!g_rgDescriptions[el.getAttribute("data-appid")][IHD_item_combinedID]) {
             console.warn("Unknown asset skipped during cursor: " + JSON.stringify(g_historyCursor) + " or prev cursor: " + JSON.stringify(IHD_prev_cursor));
             console.warn("Unknown asset combinedID: " + IHD_item_combinedID);
-            IHD_skipped_asset_counter++;
+            IHD_items_json[0] = false;
             return;
         }
         var IHD_item_data = g_rgDescriptions[el.getAttribute("data-appid")][IHD_item_combinedID];
@@ -2549,7 +2576,6 @@ function IHD_download(content, fileName, contentType) {
     a.download = fileName;
     a.click();
     URL.revokeObjectURL(a.href);
-    console.log("Total skipped assets: " + IHD_skipped_asset_counter);
 }
 //Return a dictionary with the keys and values reversed
 function invertDictionary(dict) {
