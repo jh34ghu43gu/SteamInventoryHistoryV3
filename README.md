@@ -27,7 +27,12 @@
    
 # Versions
 
- ## 0.9.2
+ ## 0.9.3
+ * Downloads now save what missions have been completed on each mvm badge
+   * 0.9.4 will use these stats for #30
+ * Spells are stored in an array now using the other_dictionary for names and uses the proper names (instead of including "Halloween:  (spell only active during event)")
+
+ ### 0.9.2
  * Unknown assets now trigger X amount of retries (currently 10, defined by IHD_max_event_retries) for the cursor that they were located within
  * Skipped/Missing asset counter removed
    * Replaced by a skipped cursors attribute in the main JSON object which logs which cursors were skipped if retrying X times failed

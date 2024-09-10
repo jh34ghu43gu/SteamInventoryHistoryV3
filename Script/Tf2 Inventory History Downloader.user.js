@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.9.2
+// @version      0.9.3
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -27,6 +27,8 @@ var IHD_items_type_attr = "T";
 var IHD_name_attr = "N";
 var IHD_level_attr = "L";
 var IHD_quality_attr = "Q";
+var IHD_mvm_missions_attr = "M";
+var IHD_spells_attr = "S";
 var IHD_start_cursor_attr = "starting_cursor";
 var IHD_end_cursor_attr = "ending_cursor";
 var IHD_time_zone_attr = "LocalTimeZone";
@@ -2420,6 +2422,41 @@ function IHD_add_to_dict(dictionaryType, value) {
     }
 }
 
+IHD_mvm_mission_list = {
+    "Oil Spill": [
+        "Decoy Doe's Doom",
+        "Decoy Day of Wreckoning",
+        "Coal Town Cave-in",
+        "Coal Town Quarry",
+        "Mannworks Mean Machines",
+        "Mannworks Mann Hunt"
+    ],
+    "Steel Trap": [
+        "Decoy Disk Deletion",
+        "Decoy Data Demolition",
+        "Coal Town Ctrl + Alt + Destruction",
+        "Coal Town CPU Slaughter",
+        "Mannworks Machine Massacre",
+        "Mannworks Mech Mutilation"
+    ],
+    "Mecha Engine": [
+        "Big Rock Broken Parts",
+        "Big Rock Bone Shaker",
+        "Decoy Disintegration"
+    ],
+    "Two Cities": [
+        "Mannhattan Empire Escalation",
+        "Mannhattan Metro Malice",
+        "Rottenburg Hamlet Hostility",
+        "Rottenburg Bavarian Botbash"
+    ],
+    "Gear Grinder": [
+        "Decoy Desperation",
+        "Coal Town Cataclysm",
+        "Mannworks Mannslaughter"
+    ]
+}
+
 //g_rgDescriptions is defined on the page this is meant to run on
 function IHD_itemsToJson(itemDiv, event) {
     var IHD_items_json = { 0: true };
@@ -2485,12 +2522,18 @@ function IHD_itemsToJson(itemDiv, event) {
                     });
                 }
                 if (key === "descriptions" && Object.keys(value).length > 0) {
-                    var IHD_spells = {};
-                    var IHD_spell_count = 0;
+                    var mvmBadge = "";
                     value.forEach(IHD_obj => {
-                        if (IHD_obj.value && IHD_obj.value.includes("(spell only active during event)")) {
-                            IHD_spells[IHD_spell_count] = IHD_obj.value;
-                            IHD_spell_count++;
+                        if (IHD_obj.value && IHD_obj.value.includes("Your Mann Up progress through Operation")) {
+                            mvmBadge = IHD_obj.value.substr(IHD_obj.value.indexOf("Operation") + 10);
+                            mvmBadge = mvmBadge.split("is")[0].trim(); //If by some miracle they add another tour this *might* break
+                        } else if (IHD_obj.value && IHD_obj.value.includes("(spell only active during event)")) {
+                            if (!IHD_item_json[IHD_spells_attr]) {
+                                IHD_item_json[IHD_spells_attr] = [];
+                            }
+                            var spellName = IHD_obj.value.substr(11);
+                            spellName = spellName.split("(")[0].trim();
+                            IHD_item_json[IHD_spells_attr].push(IHD_add_to_dict("other", spellName));
                         } else if (IHD_obj.value && IHD_obj.value === "Rewarded for participating in the 2014 Summer Adventure") {
                             IHD_item_json.Summer2014 = 1;
                         } else if (IHD_obj.value && IHD_obj.value === "Early Supporter of End of the Line Community Update") {
@@ -2516,11 +2559,18 @@ function IHD_itemsToJson(itemDiv, event) {
                             IHD_sheen = IHD_sheen.replace(")", "");
                             IHD_item_json.Killstreaker = IHD_add_to_dict("other", IHD_kser);
                             IHD_item_json.Sheen = IHD_add_to_dict("other", IHD_sheen);
+                        } else if (IHD_obj.value && IHD_obj.value.includes("Completed: ")) {
+                            if (!IHD_item_json[IHD_mvm_missions_attr]) {
+                                IHD_item_json[IHD_mvm_missions_attr] = [];
+                            }
+                            if (mvmBadge.length > 0) {
+                                var mission = IHD_obj.value.substr(11).trim();
+                                IHD_item_json[IHD_mvm_missions_attr].push(IHD_mvm_mission_list[mvmBadge].indexOf(mission));
+                            } else {
+                                IHD_debug_statements ? console.warn("Badge tour info was not read before mission info.") : false;
+                            }
                         }
                     });
-                    if (IHD_spell_count > 0) {
-                        IHD_item_json.Spells = IHD_spells;
-                    }
                 }
                 if (key === "app_data") {
                     IHD_item_json[IHD_quality_attr] = Number(value.quality);
