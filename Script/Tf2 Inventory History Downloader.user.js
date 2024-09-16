@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.9.3
+// @version      0.9.4
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -54,6 +54,13 @@ var IHD_start_cursor;
 var IHD_prev_cursor;
 var IHD_retry_counter = 0;
 var IHD_max_retries = 100; //Retry on HTTP errors (not 429) this many times.
+
+//0 Haven't reached the last day warning yet
+//1 We are trying to load a day earlier than the last day
+//2 We successfully loaded a day earlier so we need to restart at the previous cursor a day later
+//3 We already went through the retry so we will assume we made it to the actual end next time we reach the last day warning
+var IHD_end_of_file_retry = 0;
+
 var IHD_event_retry_counter = 0;
 var IHD_max_event_retries = 10; //Retry on unknown event asset fails this many times.
 var IHD_debug_statements = false;
@@ -425,20 +432,24 @@ function IHD_addButtons(jNode) {
         IHD_loop = setInterval(() => {
             if (IHD_ready_to_load) {
                 IHD_ready_to_load = false;
-
-                var eventSuccess = IHD_gatherVisibleItems();
-                if ((!eventSuccess) && IHD_event_retry_counter < IHD_max_event_retries) {
-                    IHD_event_retry_counter++;
-                    g_historyCursor = IHD_prev_cursor;
-                    IHD_debug_statements ? console.log("Retry #" + IHD_event_retry_counter + " for unknown assets.") : false;
-                } else {
-                    if (IHD_event_retry_counter >= IHD_max_event_retries) {
-                        console.warn("Attempted to reload unknown assets " + IHD_event_retry_counter + " times but was unsuccessful. "
-                            + "The group of events at cursor:'" + JSON.stringify(IHD_prev_cursor) + "' has been skipped. "
-                            + "This cursor has been logged in the download file so you can attempt to manually load it later.");
-                        IHD_json_object[IHD_skipped_cursors_attr][Object.keys(IHD_json_object[IHD_skipped_cursors_attr]).length] = IHD_prev_cursor;
+                if (IHD_end_of_file_retry === 2) {
+                    IHD_debug_statements ? console.log("Seeting EOFR to 3.") : false;
+                    IHD_end_of_file_retry = 3;
+                } else if (IHD_end_of_file_retry !== 1) {
+                    var eventSuccess = IHD_gatherVisibleItems();
+                    if ((!eventSuccess) && IHD_event_retry_counter < IHD_max_event_retries) {
+                        IHD_event_retry_counter++;
+                        g_historyCursor = IHD_prev_cursor;
+                        IHD_debug_statements ? console.log("Retry #" + IHD_event_retry_counter + " for unknown assets.") : false;
+                    } else {
+                        if (IHD_event_retry_counter >= IHD_max_event_retries) {
+                            console.warn("Attempted to reload unknown assets " + IHD_event_retry_counter + " times but was unsuccessful. "
+                                + "The group of events at cursor:'" + JSON.stringify(IHD_prev_cursor) + "' has been skipped. "
+                                + "This cursor has been logged in the download file so you can attempt to manually load it later.");
+                            IHD_json_object[IHD_skipped_cursors_attr][Object.keys(IHD_json_object[IHD_skipped_cursors_attr]).length] = IHD_prev_cursor;
+                        }
+                        IHD_event_retry_counter = 0;
                     }
-                    IHD_event_retry_counter = 0;
                 }
                 if (!Array.isArray(g_historyCursor)) { //If you are on the last page and try to download it will loop back to the start because history cursor is an empty array.
                     IHD_loadMoreItems();
@@ -2119,6 +2130,10 @@ function IHD_clearTradeRow() {
     this.remove();
 }
 
+function IHD_clearAllTradeRows() {
+    $(".tradehistoryrow").each(IHD_clearTradeRow);
+}
+
 function IHD_gatherVisibleItems() {
     var IHD_temp_events = {
         0: false
@@ -2162,6 +2177,11 @@ function IHD_eventIdToEvent(eventId) {
 //g_historyCursor & g_sessionID is defined on the page this is meant to run on
 //This function basically uses the same code as steam's load more button but with modified instructions
 function IHD_loadMoreItems() {
+    IHD_prev_cursor = g_historyCursor;
+    if (IHD_end_of_file_retry === 1) {
+        IHD_debug_statements ? console.log("Setting history cursor to 1 day earlier due to EOFR = 1.") : false;
+        g_historyCursor["time"] = g_historyCursor["time"] - 86400;
+    }
     IHD_debug_statements ? console.log("Starting cursor: " + JSON.stringify(g_historyCursor)) : false;
     var request_data = {
         ajax: 1,
@@ -2170,7 +2190,6 @@ function IHD_loadMoreItems() {
         app: [440]
     };
 
-    IHD_prev_cursor = g_historyCursor;
     g_historyCursor = null;
 
     $J.ajax({
@@ -2183,19 +2202,31 @@ function IHD_loadMoreItems() {
             if (data.html && data.descriptions) {
                 $J('#inventory_history_table').append(data.html);
                 g_rgDescriptions = data.descriptions;
-            } else {
+            } else if (IHD_end_of_file_retry === 0) {
                 console.warn("IHD - Data did not return an html object or descriptions object.");
-                IHD_enableButton();
             }
 
-            if (data.cursor) {
-                g_historyCursor = data.cursor;
+            if (IHD_end_of_file_retry === 1) {
+                g_historyCursor = IHD_prev_cursor;
+                IHD_clearAllTradeRows();
+                IHD_debug_statements ? console.log("Setting EOFR to 2.") : false;
+                IHD_end_of_file_retry = 2;
                 IHD_ready_to_load = true;
-            }
-            else {
-                console.warn("IHD - Data did not return a cursor. Probably at end of history.");
-                IHD_gatherVisibleItems(); //CBA testing if I can loop this to retry on an asset fail on the last page so hopefully that never happens.
-                IHD_enableButton();
+            } else {
+                if (data.cursor) {
+                    g_historyCursor = data.cursor;
+                    IHD_ready_to_load = true;
+                } else if (IHD_end_of_file_retry === 0) {
+                    console.warn("IHD - Data did not return a cursor. Attempting to load a day earlier than last cursor.")
+                    g_historyCursor = IHD_prev_cursor;
+                    IHD_end_of_file_retry = 1;
+                    IHD_clearAllTradeRows();
+                    IHD_ready_to_load = true;
+                } else {
+                    console.warn("IHD - Data did not return a cursor for the second time. Probably at end of history.");
+                    IHD_gatherVisibleItems(); //CBA testing if I can loop this to retry on an asset fail on the last page so hopefully that never happens.
+                    IHD_enableButton();
+                }
             }
         } else {
             if (!(data.error && data.error === "There was a problem loading your inventory history.")) {

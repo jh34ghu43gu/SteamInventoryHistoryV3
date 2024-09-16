@@ -28,7 +28,11 @@
    
 # Versions
 
- ## 0.9.3
+ ## 0.9.4
+ * Attempted fix for when history loading stalls at the end of steam's cache (#25)
+ * Fixed bug where no data returned would trigger the download twice
+
+ ### 0.9.3
  * Downloads now save what missions have been completed on each mvm badge
    * 0.9.4 will use these stats for #30
  * Spells are stored in an array now using the other_dictionary for names and uses the proper names (instead of including "Halloween:  (spell only active during event)")
