@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.9.4
+// @version      0.9.4.1
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -2180,7 +2180,7 @@ function IHD_loadMoreItems() {
     IHD_prev_cursor = g_historyCursor;
     if (IHD_end_of_file_retry === 1) {
         IHD_debug_statements ? console.log("Setting history cursor to 1 day earlier due to EOFR = 1.") : false;
-        g_historyCursor["time"] = g_historyCursor["time"] - 86400;
+        g_historyCursor["time"] = g_historyCursor["time"] - 2628000;
     }
     IHD_debug_statements ? console.log("Starting cursor: " + JSON.stringify(g_historyCursor)) : false;
     var request_data = {

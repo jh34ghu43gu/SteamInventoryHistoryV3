@@ -30,6 +30,7 @@
 
  ## 0.9.4
  * Attempted fix for when history loading stalls at the end of steam's cache (#25)
+   * 0.9.4.1 Change the load date to be a month earlier instead of a day seems to actually fix this
  * Fixed bug where no data returned would trigger the download twice
 
  ### 0.9.3
