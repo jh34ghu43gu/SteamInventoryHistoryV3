@@ -28,7 +28,14 @@
    
 # Versions
 
- ## 0.9.4
+ ## 0.9.5
+ * Fix drystreak tracking for unusuals (was not counting crate unusuals; current drystreak was incorrectly using user's first drystreak)
+ * Added first drystreak stat
+ * Seperate drystreak stats for cases and crates (overall still exists)
+ * Per-tour drystreak stats for first aussie and current dry (overall first aussie/current dry too difficult to implement at this time)
+ * Script will do the load earlier date fix from 0.9.4 until it fails two times in a row (0.9.4.1 didin't actually fix #25 but this should frfr)
+
+ ### 0.9.4
  * Attempted fix for when history loading stalls at the end of steam's cache (#25)
    * 0.9.4.1 Change the load date to be a month earlier instead of a day seems to actually fix this
  * Fixed bug where no data returned would trigger the download twice

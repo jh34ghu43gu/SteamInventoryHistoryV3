@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.9.4.1
+// @version      0.9.5
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -495,7 +495,6 @@ async function IHD_read_files() {
 
 function IHD_read_file_objects(objects) {
     IHD_debug_statements ? console.log("Reading all objects in files") : false;
-    var IHD_duplicate_times = {};
     for (var i = 0; i < Array.from(objects).length; i++) {
         IHD_debug_statements ? console.log("Dict counter = " + IHD_dict_counter) : false;
         var IHD_file_json_obj = Array.from(objects)[i];
@@ -865,7 +864,6 @@ const IHD_mvm_robo_hat_list = [
 //Mod is the amount of missions in a tour. This is only used to output a warning message as it's not reliable to keep track of tours this way.
 //Two Cities has two additional objs called "Mission Loot Amount Distribution" (child: "Robot Parts Distribution") and "Tour Loot Amount Distribution"
 //  which counts how many times we got X objects of loot per mission / tour
-//Dry streak counting is also done in here. "Dry Streaks"
 //Example: IHD_mvm_temptour_reverse(tempTour["Steel Trap Tours"], "Botkiller", 6, IHD_tours_obj["Steel Trap Tours"])
 function IHD_mvm_temptour_reverse(obj, abbreviation, tourSignifier, mod, outObj) {
     var tourNum = 1;
@@ -923,11 +921,16 @@ function IHD_mvm_temptour_reverse(obj, abbreviation, tourSignifier, mod, outObj)
             IHD_stats_add_item_to_obj(outObj, "Total Tours");
             outObj["All Tours"]["Tour #" + tourNum] = { ...missionObj }
             if (aussie) {
-                outObj["Australium Dropped Tours"]["Tour #" + tourNum] = { ...missionObj }
-                IHD_stats_add_item_to_obj(outObj["Dry Streaks"], dryStreak);
+                if (Object.keys(outObj["Australiums"]["Tour-Specific Australium Drystreaks"]).length === 2) { //First aussie of the tour
+                    outObj["Australiums"]["Tour-Specific Australium Drystreaks"]["First Australium"] = dryStreak;
+                }
+                outObj["Australiums"]["Australium Dropped Tours"]["Tour #" + tourNum] = { ...missionObj }
+                IHD_stats_add_item_to_obj(outObj["Australiums"], dryStreak, "Tour-Specific Australium Drystreaks");
                 dryStreak = 0;
             } else {
                 dryStreak++;
+                outObj["Australiums"]["Tour-Specific Australium Drystreaks"]["Current Drystreak"] = dryStreak;
+
             }
 
             if (Object.keys(outObj["All Tours"]["Tour #" + tourNum]).length !== mod) {
@@ -947,7 +950,8 @@ function IHD_mvm_temptour_reverse(obj, abbreviation, tourSignifier, mod, outObj)
 
 function IHD_mvm_stats_report() {
     var IHD_mvm_obj = {
-        "Australiums": {},
+        "Australiums": {
+        },
         "Two Cities Specific Loot": {
             "Professional Killstreak Kit Fabricators": {},
             "Specialized Killstreak Kit Fabricators": {},
@@ -1001,15 +1005,25 @@ function IHD_mvm_stats_report() {
         "Steel Trap Tours": {
             "Total Tours": 0,
             "Total Missions": 0,
-            "Australium Dropped Tours": {},
-            "Dry Streaks": {},
+            "Australiums": {
+                "Australium Dropped Tours": {},
+                "Tour-Specific Australium Drystreaks": {
+                    "Current Drystreak": 0,
+                    "First Australium": 0
+                }
+            },
             "All Tours": {}
         },
         "Mecha Engine Tours": {
             "Total Tours": 0,
             "Total Missions": 0,
-            "Australium Dropped Tours": {},
-            "Dry Streaks": {},
+            "Australiums": {
+                "Australium Dropped Tours": {},
+                "Tour-Specific Australium Drystreaks": {
+                    "Current Drystreak": 0,
+                    "First Australium": 0
+                }
+            },
             "All Tours": {}
         },
         "Two Cities Tours": {
@@ -1019,15 +1033,25 @@ function IHD_mvm_stats_report() {
                 "Robot Parts Distribution": {}
             },
             "Tour Loot Amount Distribution": {},
-            "Australium Dropped Tours": {},
-            "Dry Streaks": {},
+            "Australiums": {
+                "Australium Dropped Tours": {},
+                "Tour-Specific Australium Drystreaks": {
+                    "Current Drystreak": 0,
+                    "First Australium": 0
+                }
+            },
             "All Tours": {}
         },
         "Gear Grinder Tours": {
             "Total Tours": 0,
             "Total Missions": 0,
-            "Australium Dropped Tours": {},
-            "Dry Streaks": {},
+            "Australiums": {
+                "Australium Dropped Tours": {},
+                "Tour-Specific Australium Drystreaks": {
+                    "Current Drystreak": 0,
+                    "First Australium": 0
+                }
+            },
             "All Tours": {}
         }
     }
@@ -1203,7 +1227,8 @@ function IHD_unbox_stats_report() {
     var IHD_unbox_obj = {
         "All Unusuals": {},
         "Drystreaks": {
-            "Current Drystreak": 0
+            "Current Drystreak": 0,
+            "First Unusual": 0
         },
         "Cases": {
             "Total Graded Items": {
@@ -1307,16 +1332,26 @@ function IHD_unbox_stats_report() {
                     "Unusualifiers": {}
                     //Tickets, stat transfer tools
                 }
+            },
+            "Case-Only Drystreaks": {
+                "Current Drystreak": 0,
+                "First Unusual": 0
             }
         },
         "Crates": {
-            "Total Unusuals": {}
+            "Total Unusuals": {},
+            "Crate-Only Drystreaks": {
+                "Current Drystreak": 0,
+                "First Unusual": 0
+            }
         },
         "Stockings": {},
         "Errors": {}
     };
     var errorCounter = 0;
     var drystreakCounter = 0;
+    var crateDrystreakCounter = 0;
+    var caseDrystreakCounter = 0;
     if ("8" in IHD_events_type_sorted) {
         for (var unboxNum = 0; unboxNum < Object.keys(IHD_events_type_sorted["8"]).length; unboxNum++) {
             if (unboxNum in IHD_events_type_sorted["8"]) {
@@ -1330,6 +1365,8 @@ function IHD_unbox_stats_report() {
                                 IHD_unbox_obj["Cases"][crate_type[1]][crate_type[2]] = {};
                                 if (crate_type[2].startsWith("'Decorated War Hero'") || crate_type[2].startsWith("'Contract Campaigner'")) {
                                     drystreakCounter--;
+                                    caseDrystreakCounter--;
+                                    crateDrystreakCounter--;
                                 }
                             }
                         } else { //crate or stocking
@@ -1337,6 +1374,8 @@ function IHD_unbox_stats_report() {
                                 if (!(crate_type[1] in IHD_unbox_obj["Stockings"])) {
                                     IHD_unbox_obj["Stockings"][crate_type[1]] = {};
                                     drystreakCounter--; //These don't count for drystreaks cause no unusuals :p
+                                    caseDrystreakCounter--;
+                                    crateDrystreakCounter--;
                                 }
                             } else {
                                 if (!(crate_type[1] in IHD_unbox_obj["Crates"])) {
@@ -1445,13 +1484,33 @@ function IHD_unbox_stats_report() {
                                                 IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", "Total Unusuals");
                                                 IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], "Unusuals");
                                                 IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "All Unusuals");
+                                                //Drystreaks
                                                 IHD_stats_add_item_to_obj(IHD_unbox_obj, drystreakCounter, "Drystreaks");
+                                                IHD_stats_add_item_to_obj(IHD_unbox_obj["Cases"], caseDrystreakCounter, "Case-Only Drystreaks");
+                                                if (Object.keys(IHD_unbox_obj["Drystreaks"]).length === 3) {
+                                                    IHD_unbox_obj["Drystreaks"]["Current Drystreak"] = drystreakCounter;
+                                                }
+                                                if (Object.keys(IHD_unbox_obj["Cases"]["Case-Only Drystreaks"]).length === 3) {
+                                                    IHD_unbox_obj["Cases"]["Case-Only Drystreaks"]["Current Drystreak"] = caseDrystreakCounter;
+                                                }
                                                 drystreakCounter = 0;
+                                                caseDrystreakCounter = 0;
                                             }
                                         } else if (crate_type[0] === "crate") { //Don't think stockings gave unusuals but just in case
                                             if (quality === 5 && !name.includes("Unusualifier")) { //Unusualifiers ARE NOT unusuals
                                                 IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Crates", "Total Unusuals");
                                                 IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "All Unusuals");
+                                                //Drystreaks
+                                                IHD_stats_add_item_to_obj(IHD_unbox_obj, drystreakCounter, "Drystreaks");
+                                                IHD_stats_add_item_to_obj(IHD_unbox_obj["Crates"], crateDrystreakCounter, "Crate-Only Drystreaks");
+                                                if (Object.keys(IHD_unbox_obj["Drystreaks"]).length === 3) {
+                                                    IHD_unbox_obj["Drystreaks"]["Current Drystreak"] = drystreakCounter;
+                                                }
+                                                if (Object.keys(IHD_unbox_obj["Crates"]["Crate-Only Drystreaks"]).length === 3) {
+                                                    IHD_unbox_obj["Crates"]["Crate-Only Drystreaks"]["Current Drystreak"] = crateDrystreakCounter;
+                                                }
+                                                drystreakCounter = 0;
+                                                crateDrystreakCounter = 0;
                                             }
                                         }
                                     }
@@ -1459,6 +1518,8 @@ function IHD_unbox_stats_report() {
                             }
                         }
                         drystreakCounter++;
+                        caseDrystreakCounter++;
+                        crateDrystreakCounter++;
                     } else {
                         if (IHD_items_gained_attr in value) {
                             IHD_unbox_obj["Errors"][errorCounter] = {};
@@ -1470,8 +1531,10 @@ function IHD_unbox_stats_report() {
                 }
             }
         }
+        IHD_unbox_obj["Drystreaks"]["First Unusual"] = drystreakCounter;
+        IHD_unbox_obj["Crates"]["Crate-Only Drystreaks"]["First Unusual"] = crateDrystreakCounter;
+        IHD_unbox_obj["Cases"]["Case-Only Drystreaks"]["First Unusual"] = caseDrystreakCounter;
     }
-    IHD_unbox_obj["Drystreaks"]["Current Drystreak"] = drystreakCounter;
     document.getElementById("IHD_stats_div").innerHTML += "<br><div class=\"mvm\"><h2>Unboxes</h2></div>" + IHD_stats_obj_to_html(IHD_unbox_obj)[0] + "<br>";
 
 }
@@ -2051,8 +2114,13 @@ var IHD_ignore_key_totals = {
     "Mission Loot Amount Distribution": 1,
     "Robot Parts Distribution": 1,
     "Tour Loot Amount Distribution": 1,
-    "Dry Streaks": 1,
-    "Current Drystreak": 1
+    "Australium Drystreaks": 1,
+    "Australiums": 1,
+    "Current Drystreak": 1,
+    "First Unusual": 1,
+    "Case-Only Drystreaks": 1,
+    "Crate-Only Drystreaks": 1,
+    "First Australium": 1
 }
 function IHD_stats_obj_to_html(obj) {
     var html = "";
@@ -2179,7 +2247,7 @@ function IHD_eventIdToEvent(eventId) {
 function IHD_loadMoreItems() {
     IHD_prev_cursor = g_historyCursor;
     if (IHD_end_of_file_retry === 1) {
-        IHD_debug_statements ? console.log("Setting history cursor to 1 day earlier due to EOFR = 1.") : false;
+        IHD_debug_statements ? console.log("Setting history cursor to 1 month earlier due to EOFR = 1.") : false;
         g_historyCursor["time"] = g_historyCursor["time"] - 2628000;
     }
     IHD_debug_statements ? console.log("Starting cursor: " + JSON.stringify(g_historyCursor)) : false;
@@ -2223,10 +2291,14 @@ function IHD_loadMoreItems() {
                     IHD_clearAllTradeRows();
                     IHD_ready_to_load = true;
                 } else {
-                    console.warn("IHD - Data did not return a cursor for the second time. Probably at end of history.");
+                    console.warn("IHD - Data did not return a cursor two times in a row. Probably at end of history.");
                     IHD_gatherVisibleItems(); //CBA testing if I can loop this to retry on an asset fail on the last page so hopefully that never happens.
                     IHD_enableButton();
                 }
+            }
+
+            if (IHD_end_of_file_retry === 3) {
+                IHD_end_of_file_retry = 0;
             }
         } else {
             if (!(data.error && data.error === "There was a problem loading your inventory history.")) {
