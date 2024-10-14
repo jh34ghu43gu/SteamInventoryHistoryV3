@@ -28,7 +28,14 @@
    
 # Versions
 
- ## 0.9.5
+ ## 0.9.6 (Not backwards compatible with prior downloads but can be fixed by replacing a few keywords with their new abbreviations, however a bug that was fixed means you probably want to re-download anyway)
+ * Downloads now handle events with more than 2 rows (fabricator completions had 2 item loss rows for some reason and one of them would not be recorded)
+ * Fixed bug where spec ks fab sheens were not recorded
+ * Sheens, Killstreakers, Wears, and Rarities (grades) use abbreviations in the download (a personal filesize reduction of ~1%!!!)
+ * Potentially fixed bug that would cause a loop of nothing if a download was started on a page that has missing assets
+ * Stats on fabricator killstreakers and sheens from MvM added to the "Two Cities Tours" "Mission Loot Amount Distribution" category (partial #17)
+
+ ### 0.9.5
  * Fix drystreak tracking for unusuals (was not counting crate unusuals; current drystreak was incorrectly using user's first drystreak)
  * Added first drystreak stat
  * Seperate drystreak stats for cases and crates (overall still exists)

@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.9.5
+// @version      0.9.6
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -29,6 +29,10 @@ var IHD_level_attr = "L";
 var IHD_quality_attr = "Q";
 var IHD_mvm_missions_attr = "M";
 var IHD_spells_attr = "S";
+var IHD_killstreaker_attr = "KS";
+var IHD_sheen_attr = "SH";
+var IHD_rarity_attr = "R";
+var IHD_wear_attr = "W";
 var IHD_start_cursor_attr = "starting_cursor";
 var IHD_end_cursor_attr = "ending_cursor";
 var IHD_time_zone_attr = "LocalTimeZone";
@@ -428,6 +432,7 @@ function IHD_addButtons(jNode) {
 
         if (!IHD_start_cursor) {
             IHD_start_cursor = g_historyCursor;
+            IHD_prev_cursor = g_historyCursor; //TODO check if this fixes starting on a page with missing assets
         }
         IHD_loop = setInterval(() => {
             if (IHD_ready_to_load) {
@@ -746,8 +751,14 @@ function IHD_stats_report() {
 }
 
 //Incriment our item counters in obj[child] or obj[child][child2]etc
-function IHD_stats_add_item_to_obj(obj, name, child, child2, child3, child4) {
-    if (child4) {
+function IHD_stats_add_item_to_obj(obj, name, child, child2, child3, child4, child5) {
+    if (child5) {
+        if (name in obj[child][child2][child3][child4][child5]) {
+            obj[child][child2][child3][child4][child5][name]++;
+        } else {
+            obj[child][child2][child3][child4][child5][name] = 1;
+        }
+    } else if (child4) {
         if (name in obj[child][child2][child3][child4]) {
             obj[child][child2][child3][child4][name]++;
         } else {
@@ -1030,7 +1041,16 @@ function IHD_mvm_stats_report() {
             "Total Tours": 0,
             "Total Missions": 0,
             "Mission Loot Amount Distribution": {
-                "Robot Parts Distribution": {}
+                "Robot Parts Distribution": {},
+                "Killstreaks Distribution": {
+                    "Specialized": {
+                        "Sheens": {}
+                    },
+                    "Professional": {
+                        "Sheens": {},
+                        "Killstreakers": {}
+                    }
+                }
             },
             "Tour Loot Amount Distribution": {},
             "Australiums": {
@@ -1169,6 +1189,22 @@ function IHD_mvm_stats_report() {
                         } else {
                             IHD_stats_add_item_to_obj(IHD_mvm_obj, name);
                         }
+                    }
+
+                    if (IHD_killstreaker_attr in value2) {
+                        kser = IHD_inverted_other_dictionary[value2[IHD_killstreaker_attr]];
+                        if (IHD_sheen_attr in value2) {
+                            sheen = IHD_inverted_other_dictionary[value2[IHD_sheen_attr]];
+                            IHD_stats_add_item_to_obj(IHD_tours_obj, kser, "Two Cities Tours", "Mission Loot Amount Distribution", "Killstreaks Distribution", "Professional", "Killstreakers");
+                            IHD_stats_add_item_to_obj(IHD_tours_obj, sheen, "Two Cities Tours", "Mission Loot Amount Distribution", "Killstreaks Distribution", "Professional", "Sheens");
+                            IHD_stats_add_item_to_obj(IHD_tours_obj, (sheen + " + " + kser), "Two Cities Tours", "Mission Loot Amount Distribution", "Killstreaks Distribution", "Professional");
+                        } else {
+                            IHD_stats_add_item_to_obj(IHD_tours_obj, kser, "Two Cities Tours", "Mission Loot Amount Distribution", "Killstreaks Distribution", "Professional", "Killstreakers");
+                            IHD_debug_statements ? console.log("Item had a kser but no sheen.") : 0;
+                        }
+                    } else if (IHD_sheen_attr in value2) { //Assume anything without a kser but with a sheen is spec ks
+                        sheen = IHD_inverted_other_dictionary[value2[IHD_sheen_attr]];
+                        IHD_stats_add_item_to_obj(IHD_tours_obj, sheen, "Two Cities Tours", "Mission Loot Amount Distribution", "Killstreaks Distribution", "Specialized", "Sheens");
                     }
                 }
             }
@@ -1417,49 +1453,49 @@ function IHD_unbox_stats_report() {
                                             IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Cases", crate_type[1], [crate_type[2]]);
 
                                             //Grades or rarity
-                                            if ("Rarity" in value2) {
-                                                if (value2["Rarity"] === 0) {
+                                            if (IHD_rarity_attr in value2) {
+                                                if (value2[IHD_rarity_attr] === 0) {
                                                     IHD_unbox_obj["Cases"]["Total Graded Items"]["Civilian"]++;
                                                     IHD_unbox_obj["Cases"][crate_type[1]]["Graded Items"]["Civilian"]++;
-                                                } else if (value2["Rarity"] === 1) {
+                                                } else if (value2[IHD_rarity_attr] === 1) {
                                                     IHD_unbox_obj["Cases"]["Total Graded Items"]["Freelance"]++;
                                                     IHD_unbox_obj["Cases"][crate_type[1]]["Graded Items"]["Freelance"]++;
-                                                } else if (value2["Rarity"] === 2) {
+                                                } else if (value2[IHD_rarity_attr] === 2) {
                                                     IHD_unbox_obj["Cases"]["Total Graded Items"]["Mercenary"]++;
                                                     IHD_unbox_obj["Cases"][crate_type[1]]["Graded Items"]["Mercenary"]++;
-                                                } else if (value2["Rarity"] === 3) {
+                                                } else if (value2[IHD_rarity_attr] === 3) {
                                                     IHD_unbox_obj["Cases"]["Total Graded Items"]["Commando"]++;
                                                     IHD_unbox_obj["Cases"][crate_type[1]]["Graded Items"]["Commando"]++;
-                                                } else if (value2["Rarity"] === 4) {
+                                                } else if (value2[IHD_rarity_attr] === 4) {
                                                     IHD_unbox_obj["Cases"]["Total Graded Items"]["Assassin"]++;
                                                     IHD_unbox_obj["Cases"][crate_type[1]]["Graded Items"]["Assassin"]++;
-                                                } else if (value2["Rarity"] === 5) {
+                                                } else if (value2[IHD_rarity_attr] === 5) {
                                                     IHD_unbox_obj["Cases"]["Total Graded Items"]["Elite"]++;
                                                     IHD_unbox_obj["Cases"][crate_type[1]]["Graded Items"]["Elite"]++;
                                                 } else {
-                                                    console.warn("Wear value not matched to anything: " + value2["Wear"]);
+                                                    console.warn("Rarity value not matched to anything: " + value2[IHD_rarity_attr]);
                                                 }
                                             }
 
                                             //Wears totals
-                                            if ("Wear" in value2) {
-                                                if (value2["Wear"] === 0) {
+                                            if (IHD_wear_attr in value2) {
+                                                if (value2[IHD_wear_attr] === 0) {
                                                     IHD_unbox_obj["Cases"]["Total Item Wears"]["Factory New"]++;
                                                     IHD_unbox_obj["Cases"][crate_type[1]]["Item Wears"]["Factory New"]++;
-                                                } else if (value2["Wear"] === 1) {
+                                                } else if (value2[IHD_wear_attr] === 1) {
                                                     IHD_unbox_obj["Cases"]["Total Item Wears"]["Minimal Wear"]++;
                                                     IHD_unbox_obj["Cases"][crate_type[1]]["Item Wears"]["Minimal Wear"]++;
-                                                } else if (value2["Wear"] === 2) {
+                                                } else if (value2[IHD_wear_attr] === 2) {
                                                     IHD_unbox_obj["Cases"]["Total Item Wears"]["Field-Tested"]++;
                                                     IHD_unbox_obj["Cases"][crate_type[1]]["Item Wears"]["Field-Tested"]++;
-                                                } else if (value2["Wear"] === 3) {
+                                                } else if (value2[IHD_wear_attr] === 3) {
                                                     IHD_unbox_obj["Cases"]["Total Item Wears"]["Well-Worn"]++;
                                                     IHD_unbox_obj["Cases"][crate_type[1]]["Item Wears"]["Well-Worn"]++;
-                                                } else if (value2["Wear"] === 4) {
+                                                } else if (value2[IHD_wear_attr] === 4) {
                                                     IHD_unbox_obj["Cases"]["Total Item Wears"]["Battle Scarred"]++;
                                                     IHD_unbox_obj["Cases"][crate_type[1]]["Item Wears"]["Battle Scarred"]++;
                                                 } else {
-                                                    console.warn("Wear value not matched to anything: " + value2["Wear"]);
+                                                    console.warn("Wear value not matched to anything: " + value2[IHD_wear_attr]);
                                                 }
                                             }
                                             bonus = false;
@@ -1672,8 +1708,8 @@ function IHD_tradeup_report() {
                 }
 
                 for (const [key2, value2] of Object.entries(value[IHD_items_lost_attr])) {
-                    if (type.startsWith("Item") && "Rarity" in value2 && grade.length === 0) { //Only need to do this once
-                        switch (value2["Rarity"]) {
+                    if (type.startsWith("Item") && IHD_rarity_attr in value2 && grade.length === 0) { //Only need to do this once
+                        switch (value2[IHD_rarity_attr]) {
                             case 0:
                                 grade = "Civilian to Freelance";
                                 break;
@@ -1690,7 +1726,7 @@ function IHD_tradeup_report() {
                                 grade = "Assassin to Elite";
                                 break;
                             default:
-                                console.warn("Unrecognized rarity value " + value2["Rarity"] + " for trade up event #" + key + ". This event will be marked as an error.");
+                                console.warn("Unrecognized rarity value " + value2[IHD_rarity_attr] + " for trade up event #" + key + ". This event will be marked as an error.");
                                 grade = "Errors";
                                 break;
                         }
@@ -2113,6 +2149,11 @@ var IHD_ignore_key_totals = {
     "Total Missions": 1,
     "Mission Loot Amount Distribution": 1,
     "Robot Parts Distribution": 1,
+    "Killstreaks Distribution": 1,
+    "Specialized": 1,
+    "Professional": 1,
+    "Sheens": 1,
+    "Killstreakers": 1,
     "Tour Loot Amount Distribution": 1,
     "Australium Drystreaks": 1,
     "Australiums": 1,
@@ -2414,14 +2455,33 @@ function IHD_tradeHistoryRowToJsonHelper(inventoryEvent, text, time, event, item
         tempEvent[0] = true;
         return;
     }
-    if (text === "+") {
-        inventoryEvent[IHD_items_gained_attr] = items;
+    if (text === "+" || event === 30) {
+        if (inventoryEvent[IHD_items_gained_attr]) {
+            for (var i = 0; i < Object.keys(items).length; i++) {
+                inventoryEvent[IHD_items_gained_attr][Object.keys(inventoryEvent[IHD_items_gained_attr]).length] = items[i];
+            }
+        } else {
+            inventoryEvent[IHD_items_gained_attr] = {};
+            inventoryEvent[IHD_items_gained_attr] = items;
+        }
     } else if (text === "-") {
-        inventoryEvent[IHD_items_lost_attr] = items;
+        if (inventoryEvent[IHD_items_lost_attr]) {
+            for (var i = 0; i < Object.keys(items).length; i++) {
+                inventoryEvent[IHD_items_lost_attr][Object.keys(inventoryEvent[IHD_items_lost_attr]).length] = items[i];
+            }
+        } else {
+            inventoryEvent[IHD_items_lost_attr] = {};
+            inventoryEvent[IHD_items_lost_attr] = items;
+        }
     } else if (event === 100) {
-        inventoryEvent[IHD_items_hold_attr] = items;
-    } else if (event === 30) {
-        inventoryEvent[IHD_items_gained_attr] = items;
+        if (inventoryEvent[IHD_items_hold_attr]) {
+            for (var i = 0; i < Object.keys(items).length; i++) {
+                inventoryEvent[IHD_items_hold_attr][Object.keys(inventoryEvent[IHD_items_hold_attr]).length] = items[i];
+            }
+        } else {
+            inventoryEvent[IHD_items_hold_attr] = {};
+            inventoryEvent[IHD_items_hold_attr] = items;
+        }
     } else {
         console.log("IHD - Unexpected text; not + or - instead was " + text + " for date: " + time);
     }
@@ -2456,23 +2516,20 @@ function IHD_tradeHistoryRowToJson(row, tempEventsObj) {
     IHD_time = IHD_time.replace(/\s\s+/g, ' ');
     IHD_inventory_event[IHD_time_attr] = IHD_time;
     //Items
-    var IHD_items_temp1 = row.getElementsByClassName("tradehistory_items_plusminus")[0];
-    var IHD_items_temp2 = row.getElementsByClassName("tradehistory_items_plusminus")[1];
-    var IHD_items_lost = {};
-    if (IHD_items_temp1) {
-        var items = IHD_itemsToJson(IHD_items_temp1.nextElementSibling, IHD_eventName)
-        IHD_tradeHistoryRowToJsonHelper(IHD_inventory_event, IHD_items_temp1.textContent, IHD_time, IHD_eventId, items, tempEventsObj, IHD_items_lost);
-        if (IHD_items_temp1.textContent === "-") {
-            IHD_items_lost = items; //Can't handle this in the helper method for some reason
+    for (var i = 0; i < row.getElementsByClassName("tradehistory_items_plusminus").length; i++) {
+        var IHD_items_temp = row.getElementsByClassName("tradehistory_items_plusminus")[i];
+        if (IHD_items_temp) {
+            var items = IHD_itemsToJson(IHD_items_temp.nextElementSibling, IHD_eventName)
+            IHD_tradeHistoryRowToJsonHelper(IHD_inventory_event, IHD_items_temp.textContent, IHD_time, IHD_eventId, items, tempEventsObj);
         }
     }
-    if (IHD_items_temp2) {
-        var items2 = IHD_itemsToJson(IHD_items_temp2.nextElementSibling, IHD_eventName);
-        IHD_tradeHistoryRowToJsonHelper(IHD_inventory_event, IHD_items_temp2.textContent, IHD_time, IHD_eventId, items2, tempEventsObj, IHD_items_lost);
-        if (IHD_items_temp1.textContent === "-") {
-            IHD_items_lost = items; //Can't handle this in the helper method for some reason
-        }
+
+    if (IHD_inventory_event[IHD_items_lost_attr]) {
+        var IHD_items_lost = IHD_inventory_event[IHD_items_lost_attr];
+    } else {
+        IHD_items_lost = {};
     }
+
     row.remove();
     //Used event
     if (((Object.keys(IHD_items_lost).length > 0 && IHD_crate_items_used.includes(IHD_inverted_dictionary[IHD_items_lost[0][IHD_name_attr]]))
@@ -2608,16 +2665,16 @@ function IHD_itemsToJson(itemDiv, event) {
                             if (key2.toLowerCase() === "category") {
                                 if (value2.toLowerCase() === "exterior") {
                                     if (IHD_obj.name in IHD_wear_map) {
-                                        IHD_item_json.Wear = IHD_wear_map[IHD_obj.name];
+                                        IHD_item_json[IHD_wear_attr] = IHD_wear_map[IHD_obj.name];
                                     } else {
-                                        IHD_item_json.Wear = IHD_obj.name;
+                                        IHD_item_json[IHD_wear_attr] = IHD_obj.name;
                                     }
                                 }
                                 if (value2.toLowerCase() === "rarity") {
                                     if (IHD_obj.name in IHD_rarity_map) {
-                                        IHD_item_json.Rarity = IHD_rarity_map[IHD_obj.name];
+                                        IHD_item_json[IHD_rarity_attr] = IHD_rarity_map[IHD_obj.name];
                                     } else {
-                                        IHD_item_json.Rarity = IHD_obj.name;
+                                        IHD_item_json[IHD_rarity_attr] = IHD_obj.name;
                                     }
                                 }
                             }
@@ -2643,25 +2700,25 @@ function IHD_itemsToJson(itemDiv, event) {
                             IHD_item_json.EOTL = 1;
                         } else if (IHD_obj.value && IHD_obj.value === "( Loaner - Cannot be traded, marketed, crafted, or modified )") {
                             IHD_item_json.Loaner = 1;
-                        } else if (!IHD_item_json.Rarity && IHD_obj.value
+                        } else if (!IHD_item_json[IHD_rarity_attr] && IHD_obj.value
                             && IHD_obj.value.split(" ")[1] === "Grade" && IHD_obj.value.split(" ")[0] in IHD_rarity_map) {
                             //Getting skin rarity if it wasn't found in category
-                            IHD_item_json.Rarity = IHD_rarity_map[IHD_obj.value.split(" ")[0]];
-                        } else if (IHD_obj.value && IHD_obj.value.startsWith("Killstreaker: ")) {
-                            var IHD_kser = IHD_obj.value.substr(14).trim();
-                            IHD_kser = IHD_kser.replace(")", "");
-                            IHD_item_json.Killstreaker = IHD_add_to_dict("other", IHD_kser);
-                        } else if (IHD_obj.value && IHD_obj.value.startsWith("Sheen: ")) {
-                            var IHD_sheen = IHD_obj.value.substr(7).trim();
-                            IHD_sheen = IHD_sheen.replace(")", "");
-                            IHD_item_json.Sheen = IHD_add_to_dict("other", IHD_sheen);
+                            IHD_item_json[IHD_rarity_attr] = IHD_rarity_map[IHD_obj.value.split(" ")[0]];
                         } else if (IHD_obj.value && IHD_obj.value.includes("Killstreaker: ") && IHD_obj.value.includes("Sheen: ")) {
                             IHD_kser = IHD_obj.value.substr(15, IHD_obj.value.indexOf(",") - 15).trim();
                             IHD_kser = IHD_kser.replace(")", "");
                             IHD_sheen = IHD_obj.value.substr(IHD_obj.value.indexOf("Sheen: ") + 7).trim();
                             IHD_sheen = IHD_sheen.replace(")", "");
-                            IHD_item_json.Killstreaker = IHD_add_to_dict("other", IHD_kser);
-                            IHD_item_json.Sheen = IHD_add_to_dict("other", IHD_sheen);
+                            IHD_item_json[IHD_killstreaker_attr] = IHD_add_to_dict("other", IHD_kser);
+                            IHD_item_json[IHD_sheen_attr] = IHD_add_to_dict("other", IHD_sheen);
+                        } else if (IHD_obj.value && (IHD_obj.value.startsWith("(Killstreaker: ") || IHD_obj.value.startsWith("Killstreaker: "))) {
+                            var IHD_kser = IHD_obj.value.substr(14).trim();
+                            IHD_kser = IHD_kser.replace(")", "");
+                            IHD_item_json[IHD_killstreaker_attr] = IHD_add_to_dict("other", IHD_kser);
+                        } else if (IHD_obj.value && (IHD_obj.value.startsWith("(Sheen: ") || IHD_obj.value.startsWith("Sheen: "))) {
+                            var IHD_sheen = IHD_obj.value.substr(7).trim();
+                            IHD_sheen = IHD_sheen.replace(")", "");
+                            IHD_item_json[IHD_sheen_attr] = IHD_add_to_dict("other", IHD_sheen);
                         } else if (IHD_obj.value && IHD_obj.value.includes("Completed: ")) {
                             if (!IHD_item_json[IHD_mvm_missions_attr]) {
                                 IHD_item_json[IHD_mvm_missions_attr] = [];
