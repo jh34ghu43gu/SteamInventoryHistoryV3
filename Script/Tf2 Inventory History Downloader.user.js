@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.9.6
+// @version      0.9.7
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -254,7 +254,8 @@ const IHD_crate_items_used = [
     "Unlocked Creepy Medic Crate",
     "Unlocked Creepy Sniper Crate",
     "Unlocked Creepy Spy Crate",
-    "Gift-Stuffed Stocking"
+    "Gift-Stuffed Stocking",
+    "Halloween Package"
 ]
 //They started labeling all the stockings in 2017 so create some entries up through current year
 for (var i = 2017; i <= new Date().getFullYear(); i++) {
@@ -667,18 +668,19 @@ function IHD_duplicate_entry_checker(entry1, entry2, strict) {
 
 //Statistics generation section
 /* Events of importance
-    "Played MvM Mann Up Mode"       6
-    "MvM Squad Surplus bonus"       7
-    "Unlocked a crate"              8
-    "Purchased from the store"      9
-    "Traded up"                     10
-    "You deleted"                   13
-    "Used"                          21
-    "Found"                         37
-    "Crafted"                       42
-    "Earned"                        43
-    "Added a Spell Page"            46
-    "Purchased with Blood Money"    56
+    "Played MvM Mann Up Mode"           6
+    "MvM Squad Surplus bonus"           7
+    "Unlocked a crate"                  8
+    "Purchased from the store"          9
+    "Traded up"                         10
+    "You deleted"                       13
+    "Used"                              21
+    "Halloween transmute performed"     23 
+    "Found"                             37
+    "Crafted"                           42
+    "Earned"                            43
+    "Added a Spell Page"                46
+    "Purchased with Blood Money"        56
  */
 var IHD_events_type_sorted = {};
 
@@ -732,7 +734,7 @@ function IHD_stats_report() {
     IHD_crafted_report();
     IHD_earned_report();
     IHD_blood_money_report();
-
+    IHD_transmutes_report();
 
 
     var IHD_collapsibles = document.getElementsByClassName("collapsible");
@@ -751,8 +753,14 @@ function IHD_stats_report() {
 }
 
 //Incriment our item counters in obj[child] or obj[child][child2]etc
-function IHD_stats_add_item_to_obj(obj, name, child, child2, child3, child4, child5) {
-    if (child5) {
+function IHD_stats_add_item_to_obj(obj, name, child, child2, child3, child4, child5, child6) {
+    if (child6) {
+        if (name in obj[child][child2][child3][child4][child5][child6]) {
+            obj[child][child2][child3][child4][child5][child6][name]++;
+        } else {
+            obj[child][child2][child3][child4][child5][child6][name] = 1;
+        }
+    } else if (child5) {
         if (name in obj[child][child2][child3][child4][child5]) {
             obj[child][child2][child3][child4][child5][name]++;
         } else {
@@ -920,10 +928,10 @@ function IHD_mvm_temptour_reverse(obj, abbreviation, tourSignifier, mod, outObj)
             if (specFabs === 2 || (specFabs === 1 && !tour)) {
                 twoCitiesMissionVar++;
             }
-            IHD_stats_add_item_to_obj(outObj["Mission Loot Amount Distribution"], twoCitiesMissionVar);
+            IHD_stats_add_item_to_obj(outObj["Mission Loot Amount Distribution"]["Total Box Distribution"], twoCitiesMissionVar);
             var partString = "B" + bwParts + "R" + rParts;
             IHD_stats_add_item_to_obj(outObj["Mission Loot Amount Distribution"]["Robot Parts Distribution"], partString);
-            IHD_stats_add_item_to_obj(outObj["Mission Loot Amount Distribution"]["Robot Parts Distribution"], "Pristine: " + pParts);
+            IHD_stats_add_item_to_obj(outObj["Mission Loot Amount Distribution"]["Robot Parts Distribution"], pParts + " Pristine");
             if (bwParts > 6) {
                 IHD_debug_statements ? console.log("BW Parts over 6 at tour#" + tourNum) : 0;
             }
@@ -1011,6 +1019,7 @@ function IHD_mvm_stats_report() {
         "Oil Spill Tours": {
             "Total Tours": 0,
             "Total Missions": 0,
+            "Finished Tour on Mission": {},
             "All Tours": {}
         },
         "Steel Trap Tours": {
@@ -1023,6 +1032,7 @@ function IHD_mvm_stats_report() {
                     "First Australium": 0
                 }
             },
+            "Finished Tour on Mission": {},
             "All Tours": {}
         },
         "Mecha Engine Tours": {
@@ -1035,12 +1045,14 @@ function IHD_mvm_stats_report() {
                     "First Australium": 0
                 }
             },
+            "Finished Tour on Mission": {},
             "All Tours": {}
         },
         "Two Cities Tours": {
             "Total Tours": 0,
             "Total Missions": 0,
             "Mission Loot Amount Distribution": {
+                "Total Box Distribution": {},
                 "Robot Parts Distribution": {},
                 "Killstreaks Distribution": {
                     "Specialized": {
@@ -1048,8 +1060,10 @@ function IHD_mvm_stats_report() {
                     },
                     "Professional": {
                         "Sheens": {},
-                        "Killstreakers": {}
-                    }
+                        "Killstreakers": {},
+                        "Combos": {}
+                    },
+
                 }
             },
             "Tour Loot Amount Distribution": {},
@@ -1060,6 +1074,7 @@ function IHD_mvm_stats_report() {
                     "First Australium": 0
                 }
             },
+            "Finished Tour on Mission": {},
             "All Tours": {}
         },
         "Gear Grinder Tours": {
@@ -1072,6 +1087,7 @@ function IHD_mvm_stats_report() {
                     "First Australium": 0
                 }
             },
+            "Finished Tour on Mission": {},
             "All Tours": {}
         }
     }
@@ -1088,28 +1104,55 @@ function IHD_mvm_stats_report() {
         for (const [key, value] of Object.entries(IHD_events_type_sorted["6"])) {
             var tempMission = {};
             var tour = "";
+            var completeMission = "";
             if (IHD_items_gained_attr in value) {
                 for (const [key2, value2] of Object.entries(value[IHD_items_lost_attr])) {
                     //Grab what tour number this was for
                     //Redunant check to see what tour we are in
+                    //Note that the completion mission check is only performed here since the edge case of a 1st mission is not applicable
                     if (IHD_name_attr in value2) {
                         var name = IHD_inverted_dictionary[value2[IHD_name_attr]];
                         if (IHD_mvm_badge_list.includes(name)) {
                             switch (IHD_mvm_badge_list.indexOf(name)) {
                                 case 0:
                                     tour = "Oil Spill Tours";
+                                    if (IHD_mvm_missions_attr in value2) {
+                                        if (value2[IHD_mvm_missions_attr].length + 1 === Object.keys(IHD_mvm_mission_list["Oil Spill"]).length) {
+                                            completeMission = IHD_mvm_mission_list["Oil Spill"][15 - value2[IHD_mvm_missions_attr].reduce((partialSum, a) => partialSum + a, 0)];
+                                        }
+                                    }
                                     break;
                                 case 1:
                                     tour = "Steel Trap Tours";
+                                    if (IHD_mvm_missions_attr in value2) {
+                                        if (value2[IHD_mvm_missions_attr].length + 1 === Object.keys(IHD_mvm_mission_list["Steel Trap"]).length) {
+                                            completeMission = IHD_mvm_mission_list["Steel Trap"][15 - value2[IHD_mvm_missions_attr].reduce((partialSum, a) => partialSum + a, 0)];
+                                        }
+                                    }
                                     break;
                                 case 2:
                                     tour = "Mecha Engine Tours";
+                                    if (IHD_mvm_missions_attr in value2) {
+                                        if (value2[IHD_mvm_missions_attr].length + 1 === Object.keys(IHD_mvm_mission_list["Mecha Engine"]).length) {
+                                            completeMission = IHD_mvm_mission_list["Mecha Engine"][3 - value2[IHD_mvm_missions_attr].reduce((partialSum, a) => partialSum + a, 0)];
+                                        }
+                                    }
                                     break;
                                 case 3:
                                     tour = "Two Cities Tours";
+                                    if (IHD_mvm_missions_attr in value2) {
+                                        if (value2[IHD_mvm_missions_attr].length + 1 === Object.keys(IHD_mvm_mission_list["Two Cities"]).length) {
+                                            completeMission = IHD_mvm_mission_list["Two Cities"][6 - value2[IHD_mvm_missions_attr].reduce((partialSum, a) => partialSum + a, 0)];
+                                        }
+                                    }
                                     break;
                                 case 4:
                                     tour = "Gear Grinder Tours";
+                                    if (IHD_mvm_missions_attr in value2) {
+                                        if (value2[IHD_mvm_missions_attr].length + 1 === Object.keys(IHD_mvm_mission_list["Gear Grinder"]).length) {
+                                            completeMission = IHD_mvm_mission_list["Gear Grinder"][3 - value2[IHD_mvm_missions_attr].reduce((partialSum, a) => partialSum + a, 0)];
+                                        }
+                                    }
                                     break;
                                 default:
                                     IHD_debug_statements ? console.log("Tour had invalid deleted badge index of: " + IHD_mvm_badge_list.indexOf(name)) : 0;
@@ -1197,7 +1240,7 @@ function IHD_mvm_stats_report() {
                             sheen = IHD_inverted_other_dictionary[value2[IHD_sheen_attr]];
                             IHD_stats_add_item_to_obj(IHD_tours_obj, kser, "Two Cities Tours", "Mission Loot Amount Distribution", "Killstreaks Distribution", "Professional", "Killstreakers");
                             IHD_stats_add_item_to_obj(IHD_tours_obj, sheen, "Two Cities Tours", "Mission Loot Amount Distribution", "Killstreaks Distribution", "Professional", "Sheens");
-                            IHD_stats_add_item_to_obj(IHD_tours_obj, (sheen + " + " + kser), "Two Cities Tours", "Mission Loot Amount Distribution", "Killstreaks Distribution", "Professional");
+                            IHD_stats_add_item_to_obj(IHD_tours_obj, (sheen + " + " + kser), "Two Cities Tours", "Mission Loot Amount Distribution", "Killstreaks Distribution", "Professional", "Combos");
                         } else {
                             IHD_stats_add_item_to_obj(IHD_tours_obj, kser, "Two Cities Tours", "Mission Loot Amount Distribution", "Killstreaks Distribution", "Professional", "Killstreakers");
                             IHD_debug_statements ? console.log("Item had a kser but no sheen.") : 0;
@@ -1215,6 +1258,10 @@ function IHD_mvm_stats_report() {
                     mission++;
                 }
                 tempTour[tour][mission] = { ...tempMission };
+
+                if (completeMission !== "") {
+                    IHD_stats_add_item_to_obj(IHD_tours_obj, completeMission, tour, "Finished Tour on Mission");
+                }
             } else if (IHD_debug_statements) {
                 console.log("Could not find a defined tour for mission on " + value[IHD_time_attr]);
             }
@@ -1382,6 +1429,7 @@ function IHD_unbox_stats_report() {
             }
         },
         "Stockings": {},
+        "Halloween Packages": {},
         "Errors": {}
     };
     var errorCounter = 0;
@@ -1405,10 +1453,17 @@ function IHD_unbox_stats_report() {
                                     crateDrystreakCounter--;
                                 }
                             }
-                        } else { //crate or stocking
+                        } else { //crate or stocking or hween package
                             if (crate_type[0] === "stocking") {
                                 if (!(crate_type[1] in IHD_unbox_obj["Stockings"])) {
                                     IHD_unbox_obj["Stockings"][crate_type[1]] = {};
+                                    drystreakCounter--; //These don't count for drystreaks cause no unusuals :p
+                                    caseDrystreakCounter--;
+                                    crateDrystreakCounter--;
+                                }
+                            } else if (crate_type[0] === "hween-package") {
+                                if (!(crate_type[1] in IHD_unbox_obj["Halloween Packages"])) {
+                                    IHD_unbox_obj["Halloween Packages"][crate_type[1]] = {};
                                     drystreakCounter--; //These don't count for drystreaks cause no unusuals :p
                                     caseDrystreakCounter--;
                                     crateDrystreakCounter--;
@@ -1500,6 +1555,8 @@ function IHD_unbox_stats_report() {
                                             }
                                             bonus = false;
                                         }
+                                    } else if (crate_type[0] === "hween-package") {
+                                        IHD_stats_add_item_to_obj(IHD_unbox_obj, name, "Halloween Packages", crate_type[1]);
                                     } else {
                                         IHD_stats_add_item_to_obj(IHD_unbox_obj, name, ((crate_type[0] === "stocking") ? "Stockings" : "Crates"), crate_type[1]);
                                     }
@@ -2085,10 +2142,76 @@ function IHD_blood_money_report() {
 
 }
 
-//Return an array with name data for a case/crate/stocking unbox
+//Transmutes report
+function IHD_transmutes_report() {
+    var IHD_transmute_obj = {
+        "Used Items": {
+
+        },
+        "Created Items": {
+            "Unique": {}, //6
+            "Haunted": {}, //13
+            "Bonus Haunted": {},
+            "Spellbook Pages": {},
+            "Cases": {}
+        },
+        "All Events": {
+            "Per Year": {}
+        }
+    }
+    if ("23" in IHD_events_type_sorted) {
+        for (const [key, value] of Object.entries(IHD_events_type_sorted["23"])) {
+            var transmuteEvents = Object.keys(IHD_transmute_obj["All Events"]).length;
+            IHD_transmute_obj["All Events"][transmuteEvents] = { "Gained": {}, "Lost": {} };
+            var year = value[IHD_time_attr].split(",")[1].substr(0, 5).trim();
+            if (!(year in IHD_transmute_obj["All Events"]["Per Year"])) {
+                IHD_transmute_obj["All Events"]["Per Year"][year] = {};
+            }
+            var transmuteEventsForYear = Object.keys(IHD_transmute_obj["All Events"]["Per Year"][year]).length;
+            IHD_transmute_obj["All Events"]["Per Year"][year][transmuteEventsForYear] = { "Gained": {}, "Lost": {} };
+            if (IHD_items_lost_attr in value) {
+                if (IHD_debug_statements && Object.keys(value[IHD_items_lost_attr]).length > 3) {
+                    console.log("Transmute used " + Object.keys(value[IHD_items_lost_attr]).length + " items on " + value[IHD_time_attr]);
+                }
+                for (const [key2, value2] of Object.entries(value[IHD_items_lost_attr])) {
+                    if (IHD_name_attr in value2) {
+                        var name = IHD_inverted_dictionary[value2[IHD_name_attr]];
+                        IHD_stats_add_item_to_obj(IHD_transmute_obj, name, "Used Items");
+                        IHD_stats_add_item_to_obj(IHD_transmute_obj, name, "All Events", transmuteEvents, "Lost");
+                        IHD_stats_add_item_to_obj(IHD_transmute_obj, name, "All Events", "Per Year", year, transmuteEventsForYear, "Lost");
+                    }
+                }
+            }
+            if (IHD_items_gained_attr in value) {
+                for (const [key2, value2] of Object.entries(value[IHD_items_gained_attr])) {
+                    if (IHD_name_attr in value2) {
+                        name = IHD_inverted_dictionary[value2[IHD_name_attr]];
+                        IHD_stats_add_item_to_obj(IHD_transmute_obj, name, "All Events", transmuteEvents, "Gained");
+                        IHD_stats_add_item_to_obj(IHD_transmute_obj, name, "All Events", "Per Year", year, transmuteEventsForYear, "Gained");
+                        if (value2[IHD_quality_attr] === 13) {
+                            IHD_stats_add_item_to_obj(IHD_transmute_obj, name, "Created Items", "Haunted"); //TODO haunted bonus item
+                        } else if (name.includes("Case")) {
+                            IHD_stats_add_item_to_obj(IHD_transmute_obj, name, "Created Items", "Cases");
+                        } else if (name.includes("Spellbook Page")) {
+                            IHD_stats_add_item_to_obj(IHD_transmute_obj, name, "Created Items", "Spellbook Pages");
+                        } else {
+                            IHD_stats_add_item_to_obj(IHD_transmute_obj, name, "Created Items", "Unique");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    document.getElementById("IHD_stats_div").innerHTML += "<br><div class=\"mvm\"><h2>Halloween Transmutes</h2></div>" + IHD_stats_obj_to_html(IHD_transmute_obj)[0] + "<br>";
+
+}
+
+//Return an array with name data for a case/crate/stocking/halloween-package unbox
 //Example data for case ["case", case_type, name]
 //Example data for crate ["crate", name]
 //Example data for stocking ["stocking", name]
+//Example data for halloween package ["hween-package", name]
 function IHD_get_crate_name(lost_items, bLog) {
     for (const [key, value] of Object.entries(lost_items)) {
         if (IHD_name_attr in value) {
@@ -2105,6 +2228,8 @@ function IHD_get_crate_name(lost_items, bLog) {
                 return ["case", "Cosmetic Cases", name.substr(0, name.indexOf("Case")).trim()];
             } else if (name.includes("Gift-Stuffed Stocking")) {
                 return ["stocking", name];
+            } else if (name.includes("Halloween Package")) {
+                return ["hween-package", name];
             } else if (!name.includes("Key") && (name.includes("Supply Munition") || name.includes("Crate")
                 || name.includes("Strongbox") || name.includes("Cooler") || name.includes("Reel"))) {
                 return ["crate", name];
@@ -2150,9 +2275,9 @@ var IHD_ignore_key_totals = {
     "Mission Loot Amount Distribution": 1,
     "Robot Parts Distribution": 1,
     "Killstreaks Distribution": 1,
-    "Specialized": 1,
-    "Professional": 1,
-    "Sheens": 1,
+    //"Specialized": 1,
+    //"Professional": 1,
+    "Combos": 1,
     "Killstreakers": 1,
     "Tour Loot Amount Distribution": 1,
     "Australium Drystreaks": 1,
@@ -2161,7 +2286,8 @@ var IHD_ignore_key_totals = {
     "First Unusual": 1,
     "Case-Only Drystreaks": 1,
     "Crate-Only Drystreaks": 1,
-    "First Australium": 1
+    "First Australium": 1,
+    "Finished Tour on Mission": 1
 }
 function IHD_stats_obj_to_html(obj) {
     var html = "";
@@ -2594,14 +2720,14 @@ IHD_mvm_mission_list = {
     "Steel Trap": [
         "Decoy Disk Deletion",
         "Decoy Data Demolition",
-        "Coal Town Ctrl + Alt + Destruction",
+        "Coal Town Ctrl+Alt+Destruction",
         "Coal Town CPU Slaughter",
         "Mannworks Machine Massacre",
         "Mannworks Mech Mutilation"
     ],
     "Mecha Engine": [
-        "Big Rock Broken Parts",
-        "Big Rock Bone Shaker",
+        "BigRock Broken Parts",
+        "BigRock Bone Shaker",
         "Decoy Disintegration"
     ],
     "Two Cities": [
@@ -2725,6 +2851,7 @@ function IHD_itemsToJson(itemDiv, event) {
                             }
                             if (mvmBadge.length > 0) {
                                 var mission = IHD_obj.value.substr(11).trim();
+                                IHD_debug_statements && IHD_mvm_mission_list[mvmBadge].indexOf(mission) === -1 ? console.log("Could not match mission " + mission + " to a value.") : false;
                                 IHD_item_json[IHD_mvm_missions_attr].push(IHD_mvm_mission_list[mvmBadge].indexOf(mission));
                             } else {
                                 IHD_debug_statements ? console.warn("Badge tour info was not read before mission info.") : false;

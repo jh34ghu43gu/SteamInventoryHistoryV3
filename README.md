@@ -28,7 +28,16 @@
    
 # Versions
 
- ## 0.9.6 (Not backwards compatible with prior downloads but can be fixed by replacing a few keywords with their new abbreviations, however a bug that was fixed means you probably want to re-download anyway)
+ ## 0.9.7
+ * Halloween packages are downloaded and recorded as unbox events
+ * Halloween transmutes have a data section now
+ * Pristine part stat wording makes more sense (Mission Loot Amount Distribution)
+ * Finished Tour on Mission stat added to MvM Tours (#30)
+ * Bug with Steel Trap and Mecha Engine badges were not recording some missions (Redownload required to fix)
+   * Debug statement added in case they fix BigRock being 1 word, or my IDE fucks up Ctrl+Alt+Destruction, it will be easy to spot.
+ * Tweaked some values being ignored/not in 2c MvM Loot to give better totals
+
+ ### 0.9.6 (Not backwards compatible with prior downloads but can be fixed by replacing a few keywords with their new abbreviations, however a bug that was fixed means you probably want to re-download anyway)
  * Downloads now handle events with more than 2 rows (fabricator completions had 2 item loss rows for some reason and one of them would not be recorded)
  * Fixed bug where spec ks fab sheens were not recorded
  * Sheens, Killstreakers, Wears, and Rarities (grades) use abbreviations in the download (a personal filesize reduction of ~1%!!!)
