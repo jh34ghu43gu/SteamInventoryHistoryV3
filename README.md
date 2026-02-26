@@ -28,6 +28,9 @@
    
 # Versions
 
+ ## 0.9.8
+ * Fixed not generating the reports if user had completed oil spill tours
+
  ## 0.9.7
  * Halloween packages are downloaded and recorded as unbox events
  * Halloween transmutes have a data section now

@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.9.7
+// @version      0.9.8
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -883,7 +883,7 @@ const IHD_mvm_robo_hat_list = [
 //Mod is the amount of missions in a tour. This is only used to output a warning message as it's not reliable to keep track of tours this way.
 //Two Cities has two additional objs called "Mission Loot Amount Distribution" (child: "Robot Parts Distribution") and "Tour Loot Amount Distribution"
 //  which counts how many times we got X objects of loot per mission / tour
-//Example: IHD_mvm_temptour_reverse(tempTour["Steel Trap Tours"], "Botkiller", 6, IHD_tours_obj["Steel Trap Tours"])
+//Example: IHD_mvm_temptour_reverse(tempTour["Steel Trap Tours"], "ST", "Botkiller", 6, IHD_tours_obj["Steel Trap Tours"])
 function IHD_mvm_temptour_reverse(obj, abbreviation, tourSignifier, mod, outObj) {
     var tourNum = 1;
     var dryStreak = 0;
@@ -939,17 +939,18 @@ function IHD_mvm_temptour_reverse(obj, abbreviation, tourSignifier, mod, outObj)
         if (tour) {
             IHD_stats_add_item_to_obj(outObj, "Total Tours");
             outObj["All Tours"]["Tour #" + tourNum] = { ...missionObj }
-            if (aussie) {
-                if (Object.keys(outObj["Australiums"]["Tour-Specific Australium Drystreaks"]).length === 2) { //First aussie of the tour
-                    outObj["Australiums"]["Tour-Specific Australium Drystreaks"]["First Australium"] = dryStreak;
+            if (abbreviation !== "OS") {
+                if (aussie) {
+                    if (Object.keys(outObj["Australiums"]["Tour-Specific Australium Drystreaks"]).length === 2) { //First aussie of the tour
+                        outObj["Australiums"]["Tour-Specific Australium Drystreaks"]["First Australium"] = dryStreak;
+                    }
+                    outObj["Australiums"]["Australium Dropped Tours"]["Tour #" + tourNum] = { ...missionObj }
+                    IHD_stats_add_item_to_obj(outObj["Australiums"], dryStreak, "Tour-Specific Australium Drystreaks");
+                    dryStreak = 0;
+                } else {
+                    dryStreak++;
+                    outObj["Australiums"]["Tour-Specific Australium Drystreaks"]["Current Drystreak"] = dryStreak;
                 }
-                outObj["Australiums"]["Australium Dropped Tours"]["Tour #" + tourNum] = { ...missionObj }
-                IHD_stats_add_item_to_obj(outObj["Australiums"], dryStreak, "Tour-Specific Australium Drystreaks");
-                dryStreak = 0;
-            } else {
-                dryStreak++;
-                outObj["Australiums"]["Tour-Specific Australium Drystreaks"]["Current Drystreak"] = dryStreak;
-
             }
 
             if (Object.keys(outObj["All Tours"]["Tour #" + tourNum]).length !== mod) {
