@@ -28,10 +28,13 @@
    
 # Versions
 
- ## 0.9.8
+ ## 0.9.9
+ * Added a button next to the stat report button that creates a file of just item ids and a corresponding unix timestamp
+
+ ### 0.9.8
  * Fixed not generating the reports if user had completed oil spill tours
 
- ## 0.9.7
+ ### 0.9.7
  * Halloween packages are downloaded and recorded as unbox events
  * Halloween transmutes have a data section now
  * Pristine part stat wording makes more sense (Mission Loot Amount Distribution)

@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.9.8
+// @version      0.9.9
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -314,6 +314,10 @@ function IHD_addButtons(jNode) {
     IHD_stats_button.id = "IHD_stats_button";
     IHD_stats_button.innerText = "Generate Statistics Report";
     IHD_stats_button.disabled = true;
+    var IHD_download_id_dates_button = document.createElement("button");
+    IHD_download_id_dates_button.id = "IHD_download_id_dates_button";
+    IHD_download_id_dates_button.innerText = "Download only dates";
+    IHD_download_id_dates_button.disabled = true;
     var IHD_stats_progress_label = document.createElement("label"); //TODO
     IHD_stats_progress_label.for = "IHD_stats_button";
     IHD_stats_progress_label.id = "IHD_stats_progress_label";
@@ -363,6 +367,7 @@ function IHD_addButtons(jNode) {
     jNode[0].appendChild(IHD_file_input);
     jNode[0].appendChild(IHD_stats_button);
     jNode[0].appendChild(IHD_stats_progress_label);
+    jNode[0].appendChild(IHD_download_id_dates_button);
     jNode[0].appendChild(document.createElement("br")); //Filters below this
     jNode[0].appendChild(IHD_filter_trades);
     jNode[0].appendChild(IHD_filter_trades_label);
@@ -397,9 +402,14 @@ function IHD_addButtons(jNode) {
         IHD_file_list = event.target.files;
         IHD_read_file_objects(await IHD_read_files());
         IHD_stats_button.disabled = false;
+        IHD_download_id_dates_button.disabled = false;
+        IHD_download_id_dates_button = false;
     });
     IHD_stop_button.addEventListener("click", () => {
         IHD_enableButton();
+    });
+    IHD_download_id_dates_button.addEventListener("click", () => {
+        IHD_download_dates();
     });
     IHD_stats_button.addEventListener("click", () => {
         IHD_stats_button.disabled = true;
@@ -2333,6 +2343,7 @@ function IHD_enableButton() {
     }
     IHD_download_button.disabled = false;
     IHD_stats_button.disabled = false;
+    IHD_download_id_dates_button.disabled = false;
     IHD_stop_button.disabled = true;
     IHD_ready_to_load = true;
     IHD_json_object["name_dictionary"] = IHD_inverted_dictionary;
@@ -2906,6 +2917,66 @@ function IHD_itemsToJson(itemDiv, event) {
     return IHD_items_json;
 }
 
+//Get dates for use on jh34.net
+function IHD_download_dates() {
+    IHD_download(JSON.stringify(IHD_create_id_dates_json()), 'id_dates.json', 'application/json');
+}
+function IHD_create_id_dates_json() {
+    var IHD_ids_to_dates = {};
+    console.log(IHD_ids_to_dates);
+    var fileZone = IHD_json_object[IHD_time_zone_attr];
+    var fileOffset = IHD_getOffset(fileZone) * -1;
+    var sysZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    var sysOffset = IHD_getOffset(sysZone);
+    var totalOffset = (fileOffset + sysOffset) * 60;
+
+    for (const [day, events] of Object.entries(IHD_json_object[IHD_events_attr])) {
+        //Go through all the events of that day
+        for (const [key, event] of Object.entries(events)) {
+            if (IHD_items_gained_attr in event) {
+                if (IHD_time_attr in event) { //and check we have a time + items gained
+                    for (const [key2, item] of Object.entries(event[IHD_items_gained_attr])) {
+                        if ("id" in item) {
+                            var id = Number(item["id"]);
+                            id = Math.trunc(id / 100000000);
+                            if (id in IHD_ids_to_dates) {
+                                IHD_ids_to_dates[id][item["id"]] = Date.parse(event[IHD_time_attr]) / 1000 + totalOffset;
+                            } else {
+                                IHD_ids_to_dates[id] = {};
+                                IHD_ids_to_dates[id][item["id"]] = Date.parse(event[IHD_time_attr]) / 1000 + totalOffset;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return IHD_ids_to_dates;
+}
+//I hate timezones I hate timezones I love onmyway133
+//https://github.com/onmyway133/blog/issues/999
+function IHD_getOffset(zone) {
+    var format = new Intl.DateTimeFormat('en-US', {
+        timeZone: zone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+    });
+    var parts = format.formatToParts();
+    /*var hour = Number(parts[6].value);
+    if (hour === 12 && parts[12].value === "AM") {
+        hour = 0;
+    } else if (parts[12].value === "PM") {
+        hour += hour === 12 ? 0 : 12;
+    }*/
+    var asUTC = Date.UTC(Number(parts[4].value), Number(parts[0].value) - 1, Number(parts[2].value), Number(parts[6].value), Number(parts[8].value), Number(parts[10].value));
+    return Math.round((asUTC - Date.now()) / 60000);
+}
+
 //Thanks stackoverflow
 function IHD_download(content, fileName, contentType) {
     var a = document.createElement("a");
@@ -2915,6 +2986,7 @@ function IHD_download(content, fileName, contentType) {
     a.click();
     URL.revokeObjectURL(a.href);
 }
+
 //Return a dictionary with the keys and values reversed
 function invertDictionary(dict) {
     var invertedDictionary = {};
