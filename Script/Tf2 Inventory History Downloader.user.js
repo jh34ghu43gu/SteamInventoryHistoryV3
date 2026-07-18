@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Tf2 Inventory History Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.9.9
+// @version      0.9.10
 // @description  Download your tf2 inventory history from https://steamcommunity.com/my/inventoryhistory/?app[]=440&l=english
 // @author       jh34ghu43gu
 // @match        https://steamcommunity.com/*/inventoryhistory*
@@ -878,7 +878,7 @@ const IHD_mvm_robo_hat_list = [
     "Tin Pot",
     "Pyrobotics Pack",
     "Battery Bandolier",
-    "U-clank-a",
+    "U-Clank-A",
     "Tin-1000",
     "Medic Mech-Bag",
     "Bolted Bushman",
@@ -3000,7 +3000,7 @@ function invertDictionary(dict) {
 
 const IHD_weapon_list = [
     "Scattergun",
-    "Force-A-Nature",
+    "Force-a-Nature",
     "Shortstop",
     "Soda Popper",
     "Baby Face's Blaster",
@@ -3139,7 +3139,7 @@ const IHD_weapon_list = [
     "Kritzkrieg",
     "Vaccinator",
     "Bonesaw",
-    "Ubersaw",
+    "Übersaw",
     "Vita-Saw",
     "Amputator",
     "Solemn Vow",
@@ -3166,7 +3166,7 @@ const IHD_weapon_list = [
     "Revolver",
     "Big Kill",
     "Ambassador",
-    "L'Etranger",
+    "L'Étranger",
     "Enforcer",
     "Diamondback",
     "Knife",
@@ -3176,7 +3176,7 @@ const IHD_weapon_list = [
     "Wanga Prick",
     "Conniver's Kunai",
     "Big Earner",
-    "Spy-cicle",
+    "Spy-Cicle",
     "Cloak and Dagger",
     "Dead Ringer",
     "Red-Tape Recorder",
@@ -3301,7 +3301,7 @@ const IHD_hat_list = [
     "Lucky Shot",
     "Conquistador",
     "Captain's Cocktails",
-    "Helmet Without a Home",
+    "Helmet without a Home",
     "War Pig",
     "Soldier's Stogie",
     "Soldier's Slope Scopers",
@@ -3622,7 +3622,7 @@ const IHD_hat_list = [
     "Team Captain",
     "Private Eye",
     "Pocket Medic",
-    "Hat With No Name",
+    "Hat with No Name",
     "Dr. Whoa",
     "Ornament Armament",
     "Itsy Bitsy Spyer",

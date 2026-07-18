@@ -28,7 +28,10 @@
    
 # Versions
 
- ## 0.9.9
+ ## 0.9.10
+ * Some item name changes
+ 
+ ### 0.9.9
  * Added a button next to the stat report button that creates a file of just item ids and a corresponding unix timestamp
 
  ### 0.9.8
